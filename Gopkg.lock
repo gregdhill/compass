@@ -222,12 +222,11 @@
   version = "v0.3.5"
 
 [[projects]]
-  digest = "1:ec5ed9e7ac12b35906c2c65e21dd011aa7dd37c3b7248ae37cd8dafdfe8804d4"
+  digest = "1:bb3cc4c1b21ea18cfa4e3e47440fc74d316ab25b0cf42927e8c1274917bd9891"
   name = "github.com/json-iterator/go"
   packages = ["."]
   pruneopts = "UT"
-  revision = "0ac74bba4a81211b28e32ef260c0f16ae41f1377"
-  version = "1.1.1"
+  revision = "f2b4162afba35581b6d4a50d3b8f34e33c144682"
 
 [[projects]]
   digest = "1:33422d238f147d247752996a26574ac48dcf472976eda7f5134015f06bf16563"
@@ -238,11 +237,12 @@
   version = "1.0.3"
 
 [[projects]]
-  digest = "1:c3e6c10392207c5b728fb5f9ab234ea8a42413378d29422de59547125f5b473d"
+  digest = "1:e32bdbdb7c377a07a9a46378290059822efdce5c8d96fe71940d87cb4f918855"
   name = "github.com/modern-go/reflect2"
   packages = ["."]
   pruneopts = "UT"
-  revision = "05fbef0ca5da472bbf96c9322b84a53edc03c9fd"
+  revision = "4b7aa43c6742a2c18fdef89dd197aaae7dac7ccd"
+  version = "1.0.1"
 
 [[projects]]
   branch = "master"
@@ -275,17 +275,6 @@
   pruneopts = "UT"
   revision = "298182f68c66c05229eb03ac171abe6e309ee79a"
   version = "v1.0.3"
-
-[[projects]]
-  digest = "1:f23077ad8275f965e666500a7e03e9e4f38e03a8a4e73f7b54b0a5138911d2a9"
-  name = "github.com/v2pro/plz"
-  packages = [
-    "concurrent",
-    "reflect2",
-  ]
-  pruneopts = "UT"
-  revision = "10fc95fad3224a032229e59f6e7023137d82b526"
-  version = "0.9.1"
 
 [[projects]]
   digest = "1:5f935075bb0ece334b144f2bd92e2ad17d5bc3408777686056909936951e917d"
@@ -395,12 +384,11 @@
   version = "v1.4.0"
 
 [[projects]]
-  branch = "master"
-  digest = "1:077c1c599507b3b3e9156d17d36e1e61928ee9b53a5b420f10f28ebd4a0b275c"
+  digest = "1:cd018653a358d4b743a9d3bee89e825521f2ab2f2ec0770164bf7632d8d73ab7"
   name = "google.golang.org/genproto"
   packages = ["googleapis/rpc/status"]
   pruneopts = "UT"
-  revision = "db91494dd46c1fdcbbde05e5ff5eb56df8f7d79a"
+  revision = "7fd901a49ba6a7f87732eb344f6e3c5b19d1b200"
 
 [[projects]]
   digest = "1:96716cfd1b62422a05f038619c9cb0527f35e72eaa54dbaa354b6c22b2774c00"
