@@ -10,6 +10,7 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// Chart represents a single stage of the deployment pipeline.
 type Chart struct {
 	Release   string   `yaml:"release"`
 	Namespace string   `yaml:"namespace"`
@@ -22,6 +23,7 @@ type Chart struct {
 	Depends   []string `yaml:"depends"`
 }
 
+// Pipeline represents the complete workflow.
 type Pipeline struct {
 	Values map[string]string `yaml:"values"`
 	Charts []Chart           `yaml:"charts"`
@@ -83,6 +85,9 @@ func main() {
 
 	p := Pipeline{}
 	data, err := ioutil.ReadFile(pipeline)
+	if err != nil {
+		panic(err)
+	}
 	err = yaml.Unmarshal([]byte(data), &p)
 	if err != nil {
 		panic(err)

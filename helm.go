@@ -51,6 +51,7 @@ func newK8s() *k8s {
 	return &k
 }
 
+// Helm represents a new helm client and connection to Tiller.
 type Helm struct {
 	client helm.Interface
 	envset helm_env.EnvSettings

@@ -33,6 +33,9 @@ func render(file string, values map[interface{}]interface{}) []byte {
 
 	buf := new(bytes.Buffer)
 	err = t.Execute(buf, values)
+	if err != nil {
+		panic(err)
+	}
 	return buf.Bytes()
 }
 
@@ -76,7 +79,7 @@ func newChart(helm Helm, chart Chart, values map[interface{}]interface{}, finish
 	}
 
 	var out []byte
-	// mergeVals(values, loadVals(chart.Values))
+	mergeVals(values, loadVals(chart.Values))
 	if chart.Template != "" {
 		out = render(chart.Template, values)
 	}
