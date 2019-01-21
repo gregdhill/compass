@@ -110,7 +110,7 @@ func main() {
 	wg.Add(len(charts))
 
 	for _, chart := range charts {
-		go newChart(*helm, chart, values, finished, wg)
+		go newChart(*helm, chart, values, finished, &wg)
 	}
 
 	wg.Wait()

@@ -39,7 +39,7 @@ func render(file string, values map[interface{}]interface{}) []byte {
 	return buf.Bytes()
 }
 
-func postDeploy(chart Chart, values []string, deployed error, finished chan string, wg sync.WaitGroup) {
+func postDeploy(chart Chart, values []string, deployed error, finished chan string, wg *sync.WaitGroup) {
 	defer func() { finished <- chart.Release }()
 	defer wg.Done()
 
@@ -62,7 +62,7 @@ func postDeploy(chart Chart, values []string, deployed error, finished chan stri
 	}
 }
 
-func newChart(helm Helm, chart Chart, values map[interface{}]interface{}, finished chan string, wg sync.WaitGroup) {
+func newChart(helm Helm, chart Chart, values map[interface{}]interface{}, finished chan string, wg *sync.WaitGroup) {
 	_, deployed := releaseStatus(helm.client, chart.Release)
 	defer postDeploy(chart, bashVars(values), deployed, finished, wg)
 
@@ -93,9 +93,12 @@ func newChart(helm Helm, chart Chart, values map[interface{}]interface{}, finish
 		}
 		fmt.Printf("Installing release %s.\n", chart.Release)
 		installChart(helm.client, helm.envset, chart.Release, chart.Namespace, chart.Repo, chart.Name, out)
+		fmt.Printf("Release %s installed.\n", chart.Release)
 		return
 	}
 
 	fmt.Printf("Upgrading release %s.\n", chart.Release)
 	upgradeChart(helm.client, helm.envset, chart.Release, chart.Repo, chart.Name, out)
+	fmt.Printf("Release %s upgraded.\n", chart.Release)
+
 }
