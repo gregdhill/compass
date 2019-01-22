@@ -20,7 +20,7 @@ func deleteDep(index string, deps []string) []string {
 	return deps
 }
 
-func render(file string, values map[interface{}]interface{}) []byte {
+func render(out *[]byte, file string, values map[string]string) {
 	data, err := ioutil.ReadFile(file)
 	if err != nil {
 		panic(err)
@@ -36,25 +36,25 @@ func render(file string, values map[interface{}]interface{}) []byte {
 	if err != nil {
 		panic(err)
 	}
-	return buf.Bytes()
+	*out = append(*out, buf.Bytes()...)
 }
 
-func postDeploy(chart Chart, values []string, deployed error, finished chan string, wg *sync.WaitGroup) {
-	defer func() { finished <- chart.Release }()
-	defer wg.Done()
-
-	if deployed == nil && chart.Abandon {
-		return
+func shellVars(vals map[string]string) []string {
+	envs := make([]string, len(vals))
+	for key, value := range vals {
+		envs = append(envs, fmt.Sprintf("%s=%s", key, value))
 	}
+	return envs
+}
 
-	for _, command := range chart.Jobs {
+func preDeploy(chart Chart, values []string) {
+	for _, command := range chart.Jobs.Before {
 		fmt.Printf("Running job: %s\n", command)
 		args := strings.Fields(command)
-		// env := os.Environ()
-		// env = append(env, values...)
-
 		cmd := exec.Command(os.Getenv("SHELL"), args...)
 		cmd.Env = values
+		cmd.Env = append(cmd.Env, fmt.Sprintf("namespace=%s", chart.Namespace))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("release=%s", chart.Release))
 		err := cmd.Run()
 		if err != nil {
 			panic(err)
@@ -62,14 +62,31 @@ func postDeploy(chart Chart, values []string, deployed error, finished chan stri
 	}
 }
 
-func newChart(helm Helm, chart Chart, values map[interface{}]interface{}, finished chan string, wg *sync.WaitGroup) {
-	_, deployed := releaseStatus(helm.client, chart.Release)
-	defer postDeploy(chart, bashVars(values), deployed, finished, wg)
+func postDeploy(chart Chart, values []string, deployed error) {
+	for _, command := range chart.Jobs.After {
+		fmt.Printf("Running job: %s\n", command)
+		args := strings.Fields(command)
+		cmd := exec.Command(os.Getenv("SHELL"), args...)
+		cmd.Env = values
+		cmd.Env = append(cmd.Env, fmt.Sprintf("namespace=%s", chart.Namespace))
+		cmd.Env = append(cmd.Env, fmt.Sprintf("release=%s", chart.Release))
+		err := cmd.Run()
+		if err != nil {
+			panic(err)
+		}
+	}
+}
+
+func newChart(helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup) {
+	defer wg.Done()
+	defer func() { finished <- chart.Name }()
 
 	_, err := releaseStatus(helm.client, chart.Release)
 	if err == nil && chart.Abandon {
 		return
 	}
+
+	defer postDeploy(chart, shellVars(values), err)
 
 	deps := chart.Depends
 	for len(deps) > 0 {
@@ -78,10 +95,12 @@ func newChart(helm Helm, chart Chart, values map[interface{}]interface{}, finish
 		deps = deleteDep(dep, deps)
 	}
 
+	preDeploy(chart, shellVars(values))
+
 	var out []byte
 	mergeVals(values, loadVals(chart.Values))
-	if chart.Template != "" {
-		out = render(chart.Template, values)
+	for _, temp := range chart.Templates {
+		render(&out, temp, values)
 	}
 
 	status, err := releaseStatus(helm.client, chart.Release)
@@ -100,5 +119,4 @@ func newChart(helm Helm, chart Chart, values map[interface{}]interface{}, finish
 	fmt.Printf("Upgrading release %s.\n", chart.Release)
 	upgradeChart(helm.client, helm.envset, chart.Release, chart.Repo, chart.Name, out)
 	fmt.Printf("Release %s upgraded.\n", chart.Release)
-
 }

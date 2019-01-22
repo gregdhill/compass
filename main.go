@@ -7,26 +7,53 @@ import (
 	"os"
 	"sync"
 
-	"gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v2"
 )
+
+// Jobs represent any bash jobs that should be run as part of a release.
+type Jobs struct {
+	Before []string `yaml:"before"`
+	After  []string `yaml:"after"`
+}
 
 // Chart represents a single stage of the deployment pipeline.
 type Chart struct {
-	Release   string   `yaml:"release"`
-	Namespace string   `yaml:"namespace"`
-	Repo      string   `yaml:"repo"`
-	Name      string   `yaml:"name"`
-	Abandon   bool     `yaml:"abandon"`
-	Template  string   `yaml:"template"`
-	Values    string   `yaml:"values"`
-	Jobs      []string `yaml:"jobs"`
-	Depends   []string `yaml:"depends"`
+	Name      string   `yaml:"name"`      // name of chart
+	Repo      string   `yaml:"repo"`      // chart repo
+	Version   string   `yaml:"version"`   // chart version
+	Release   string   `yaml:"release"`   // release name
+	Namespace string   `yaml:"namespace"` // namespace
+	Abandon   bool     `yaml:"abandon"`   // install only
+	Values    string   `yaml:"values"`    // chart specific values
+	Depends   []string `yaml:"depends"`   // dependencies
+	Jobs      Jobs     `yaml:"jobs"`      // bash jobs
+	Templates []string `yaml:"templates"` // templates
 }
 
 // Pipeline represents the complete workflow.
 type Pipeline struct {
 	Values map[string]string `yaml:"values"`
 	Charts []Chart           `yaml:"charts"`
+}
+
+func lint(p *Pipeline, values map[string]string) {
+	for i, c := range p.Charts {
+		if c.Namespace == "" {
+			if ns := values["namespace"]; ns != "" {
+				p.Charts[i].Namespace = ns
+			} else {
+				panic(fmt.Sprintf("%s chart not given namespace", c.Name))
+			}
+		}
+
+		if c.Release == "" {
+			if rs := values["release"]; rs != "" {
+				p.Charts[i].Release = fmt.Sprintf("%s-%s", rs, c.Name)
+			} else {
+				panic(fmt.Sprintf("%s chart not given release", c.Name))
+			}
+		}
+	}
 }
 
 func loadVals(vals string) map[string]string {
@@ -50,18 +77,10 @@ func loadVals(vals string) map[string]string {
 	return values
 }
 
-func mergeVals(prev map[interface{}]interface{}, next map[string]string) {
+func mergeVals(prev map[string]string, next map[string]string) {
 	for key, value := range next {
 		prev[key] = value
 	}
-}
-
-func bashVars(vals map[interface{}]interface{}) []string {
-	envs := make([]string, len(vals))
-	for key, value := range vals {
-		envs = append(envs, fmt.Sprintf("%s=%s", key, value))
-	}
-	return envs
 }
 
 func main() {
@@ -88,15 +107,17 @@ func main() {
 	if err != nil {
 		panic(err)
 	}
+
 	err = yaml.Unmarshal([]byte(data), &p)
 	if err != nil {
 		panic(err)
 	}
 
-	values := make(map[interface{}]interface{})
+	values := make(map[string]string, len(p.Values))
 	mergeVals(values, p.Values)
 	mergeVals(values, loadVals(envFile))
 
+	lint(&p, values)
 	helm := setupHelm()
 	defer close(helm.tiller)
 

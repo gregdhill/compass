@@ -33,6 +33,7 @@ type k8s struct {
 }
 
 func newK8s() *k8s {
+	// Fetch in-cluster config, if err try local.
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
