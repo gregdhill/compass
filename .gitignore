@@ -12,5 +12,5 @@
 *.out
 
 # Other
-test/
+examples/
 compass

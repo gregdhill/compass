@@ -102,12 +102,12 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 			deleteChart(helm.client, chart.Release)
 		}
 		fmt.Printf("Installing release %s.\n", chart.Release)
-		installChart(helm.client, helm.envset, chart.Release, chart.Namespace, chart.Repo, chart.Name, out)
+		installChart(helm.client, helm.envset, chart.Release, chart.Namespace, chart.Repo, chart.Name, chart.Version, out)
 		fmt.Printf("Release %s installed.\n", chart.Release)
 		return
 	}
 
 	fmt.Printf("Upgrading release %s.\n", chart.Release)
-	upgradeChart(helm.client, helm.envset, chart.Release, chart.Repo, chart.Name, out)
+	upgradeChart(helm.client, helm.envset, chart.Release, chart.Repo, chart.Name, chart.Version, out)
 	fmt.Printf("Release %s upgraded.\n", chart.Release)
 }

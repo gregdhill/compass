@@ -126,13 +126,13 @@ func downloadChart(location, version string, settings helm_env.EnvSettings) (str
 	return chart, err
 }
 
-func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, release, namespace, repository, name string, values []byte) {
+func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, release, namespace, repository, name, version string, values []byte) {
 	_, _ = url.ParseRequestURI(repository)
 	if strings.Index(name, "/") == -1 && repository != "" {
 		name = fmt.Sprintf("%s/%s", repository, name)
 	}
 
-	chart, _ := downloadChart(name, "", settings)
+	chart, _ := downloadChart(name, version, settings)
 	requestedChart, _ := chartutil.Load(chart)
 	chartutil.LoadRequirements(requestedChart)
 
@@ -150,13 +150,13 @@ func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, rele
 	}
 }
 
-func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, release, repository, name string, values []byte) {
+func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, release, repository, name, version string, values []byte) {
 	_, _ = url.ParseRequestURI(repository)
 	if strings.Index(name, "/") == -1 && repository != "" {
 		name = fmt.Sprintf("%s/%s", repository, name)
 	}
 
-	chart, _ := downloadChart(name, "", settings)
+	chart, _ := downloadChart(name, version, settings)
 
 	_, err := helmClient.UpdateRelease(
 		release,
