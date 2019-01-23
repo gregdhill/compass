@@ -47,8 +47,8 @@ func shellVars(vals map[string]string) []string {
 	return envs
 }
 
-func preDeploy(chart Chart, values []string) {
-	for _, command := range chart.Jobs.Before {
+func shellJobs(chart Chart, values []string, jobs []string) {
+	for _, command := range jobs {
 		fmt.Printf("Running job: %s\n", command)
 		args := strings.Fields(command)
 		cmd := exec.Command(os.Getenv("SHELL"), args...)
@@ -62,31 +62,22 @@ func preDeploy(chart Chart, values []string) {
 	}
 }
 
-func postDeploy(chart Chart, values []string, deployed error) {
-	for _, command := range chart.Jobs.After {
-		fmt.Printf("Running job: %s\n", command)
-		args := strings.Fields(command)
-		cmd := exec.Command(os.Getenv("SHELL"), args...)
-		cmd.Env = values
-		cmd.Env = append(cmd.Env, fmt.Sprintf("namespace=%s", chart.Namespace))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("release=%s", chart.Release))
-		err := cmd.Run()
-		if err != nil {
-			panic(err)
-		}
-	}
-}
-
-func newChart(helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup) {
+func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup) {
 	defer wg.Done()
-	defer func() { finished <- chart.Name }()
+	defer func() { finished <- key }()
 
 	_, err := releaseStatus(helm.client, chart.Release)
 	if err == nil && chart.Abandon {
 		return
 	}
 
-	defer postDeploy(chart, shellVars(values), err)
+	mergeVals(values, loadVals(chart.Values))
+	reqs := chart.Requires
+	for _, r := range reqs {
+		if _, exists := values[r]; !exists {
+			return
+		}
+	}
 
 	deps := chart.Depends
 	for len(deps) > 0 {
@@ -95,10 +86,10 @@ func newChart(helm Helm, chart Chart, values map[string]string, finished chan st
 		deps = deleteDep(dep, deps)
 	}
 
-	preDeploy(chart, shellVars(values))
+	shellJobs(chart, shellVars(values), chart.Jobs.Before)
+	defer shellJobs(chart, shellVars(values), chart.Jobs.After)
 
 	var out []byte
-	mergeVals(values, loadVals(chart.Values))
 	for _, temp := range chart.Templates {
 		render(&out, temp, values)
 	}

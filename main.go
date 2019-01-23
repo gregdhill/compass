@@ -25,6 +25,7 @@ type Chart struct {
 	Namespace string   `yaml:"namespace"` // namespace
 	Abandon   bool     `yaml:"abandon"`   // install only
 	Values    string   `yaml:"values"`    // chart specific values
+	Requires  []string `yaml:"requires"`  // env requirements
 	Depends   []string `yaml:"depends"`   // dependencies
 	Jobs      Jobs     `yaml:"jobs"`      // bash jobs
 	Templates []string `yaml:"templates"` // templates
@@ -33,25 +34,27 @@ type Chart struct {
 // Pipeline represents the complete workflow.
 type Pipeline struct {
 	Values map[string]string `yaml:"values"`
-	Charts []Chart           `yaml:"charts"`
+	Charts map[string]*Chart `yaml:"charts"`
 }
 
 func lint(p *Pipeline, values map[string]string) {
-	for i, c := range p.Charts {
+	for n, c := range p.Charts {
 		if c.Namespace == "" {
 			if ns := values["namespace"]; ns != "" {
-				p.Charts[i].Namespace = ns
+				c.Namespace = ns
 			} else {
 				panic(fmt.Sprintf("%s chart not given namespace", c.Name))
 			}
+			mergeVals(values, map[string]string{fmt.Sprintf("%s_namespace", n): c.Namespace})
 		}
 
 		if c.Release == "" {
 			if rs := values["release"]; rs != "" {
-				p.Charts[i].Release = fmt.Sprintf("%s-%s", rs, c.Name)
+				c.Release = fmt.Sprintf("%s-%s", rs, c.Name)
 			} else {
 				panic(fmt.Sprintf("%s chart not given release", c.Name))
 			}
+			mergeVals(values, map[string]string{fmt.Sprintf("%s_release", n): c.Release})
 		}
 	}
 }
@@ -116,8 +119,8 @@ func main() {
 	values := make(map[string]string, len(p.Values))
 	mergeVals(values, p.Values)
 	mergeVals(values, loadVals(envFile))
-
 	lint(&p, values)
+
 	helm := setupHelm()
 	defer close(helm.tiller)
 
@@ -130,8 +133,8 @@ func main() {
 	var wg sync.WaitGroup
 	wg.Add(len(charts))
 
-	for _, chart := range charts {
-		go newChart(*helm, chart, values, finished, &wg)
+	for key, chart := range charts {
+		go newChart(key, *helm, *chart, values, finished, &wg)
 	}
 
 	wg.Wait()
