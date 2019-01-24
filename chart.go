@@ -26,7 +26,12 @@ func render(out *[]byte, file string, values map[string]string) {
 		panic(err)
 	}
 
-	t, err := template.New("template").Parse(string(data))
+	funcMap := template.FuncMap{
+		"digest": DockerHash,
+		"remove": replaceOne,
+	}
+
+	t, err := template.New("chart").Funcs(funcMap).Parse(string(data))
 	if err != nil {
 		panic(err)
 	}
@@ -93,6 +98,8 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 	for _, temp := range chart.Templates {
 		render(&out, temp, values)
 	}
+
+	fmt.Println(string(out))
 
 	status, err := releaseStatus(helm.client, chart.Release)
 

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/ioutil"
@@ -86,11 +87,21 @@ func mergeVals(prev map[string]string, next map[string]string) {
 	}
 }
 
+func cUsage() {
+	fmt.Printf("Usage: %s [OPTIONS] scroll ...\n", os.Args[0])
+	flag.PrintDefaults()
+}
+
 func main() {
 	fmt.Println("Starting...")
+
 	var envFile string
+	var outFile string
 	flag.StringVar(&envFile, "env", "", "Environment file with key:value mappings.")
+	flag.StringVar(&outFile, "out", "", "Output primary variables.")
 	flag.Parse()
+	flag.Usage = cUsage
+
 	if flag.NArg() == 0 {
 		flag.Usage()
 		os.Exit(1)
@@ -98,11 +109,11 @@ func main() {
 
 	pipeline := flag.Arg(0)
 	if pipeline == "" {
-		panic("No pipeline file specified.")
+		panic("No pipeline file specified")
 	}
 
 	if envFile == "" {
-		fmt.Println("Not using environment file.")
+		fmt.Println("Not using environment file")
 	}
 
 	p := Pipeline{}
@@ -120,13 +131,12 @@ func main() {
 	mergeVals(values, p.Values)
 	mergeVals(values, loadVals(envFile))
 	lint(&p, values)
-
 	helm := setupHelm()
 	defer close(helm.tiller)
 
 	charts := p.Charts
 	if len(charts) == 0 {
-		panic("No charts specified.")
+		panic("No charts specified")
 	}
 
 	finished := make(chan string, len(charts))
@@ -138,5 +148,16 @@ func main() {
 	}
 
 	wg.Wait()
+
+	if outFile != "" {
+		fmt.Printf("Writing values to %s\n", outFile)
+		valOut, err := json.Marshal(values)
+		if err != nil {
+			fmt.Println(err)
+			return
+		}
+		ioutil.WriteFile(outFile, valOut, 0644)
+	}
+
 	fmt.Println("Done")
 }
