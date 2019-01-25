@@ -11,6 +11,8 @@ import (
 	"sync"
 )
 
+var lock sync.Mutex
+
 func deleteDep(index string, deps []string) []string {
 	for i, j := range deps {
 		if j == index {
@@ -20,18 +22,13 @@ func deleteDep(index string, deps []string) []string {
 	return deps
 }
 
-func render(out *[]byte, file string, values map[string]string) {
-	data, err := ioutil.ReadFile(file)
-	if err != nil {
-		panic(err)
-	}
-
+func generate(data, out *[]byte, values map[string]string) {
 	funcMap := template.FuncMap{
 		"digest": dockerHash,
 		"remove": removePattern,
 	}
 
-	t, err := template.New("chart").Funcs(funcMap).Parse(string(data))
+	t, err := template.New("chart").Funcs(funcMap).Parse(string(*data))
 	if err != nil {
 		panic(err)
 	}
@@ -74,9 +71,12 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 		return
 	}
 
-	mergeVals(values, loadVals(chart.Values))
+	lock.Lock()
+	mergeVals(values, loadVals(chart.Values, nil))
 	mergeVals(values, map[string]string{"namespace": chart.Namespace})
 	mergeVals(values, map[string]string{"release": chart.Release})
+	lock.Unlock()
+
 	reqs := chart.Requires
 	for _, r := range reqs {
 		if _, exists := values[r]; !exists {
@@ -96,7 +96,11 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 
 	var out []byte
 	for _, temp := range chart.Templates {
-		render(&out, temp, values)
+		data, read := ioutil.ReadFile(temp)
+		if read != nil {
+			panic(read)
+		}
+		generate(&data, &out, values)
 	}
 
 	if plan {

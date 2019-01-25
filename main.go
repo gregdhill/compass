@@ -34,8 +34,9 @@ type Chart struct {
 
 // Pipeline represents the complete workflow.
 type Pipeline struct {
-	Values map[string]string `yaml:"values"`
+	Derive string            `yaml:"derive"`
 	Charts map[string]*Chart `yaml:"charts"`
+	Values map[string]string `yaml:"values"`
 }
 
 func lint(p *Pipeline, values map[string]string) {
@@ -60,25 +61,58 @@ func lint(p *Pipeline, values map[string]string) {
 	}
 }
 
-func loadVals(vals string) map[string]string {
+func preRender(tpl string, values map[string]string) map[string]string {
+	data, err := ioutil.ReadFile(tpl)
+	if err != nil {
+		panic(err)
+	}
+	var out []byte
+	generate(&data, &out, values)
+	mergeVals(values, loadVals(tpl, out))
+
+	return values
+}
+
+func postRender(values map[string]string) {
+	valOut, err := json.Marshal(values)
+	if err != nil {
+		fmt.Println(err)
+		return
+	}
+	fmt.Println(string(valOut))
+}
+
+func loadVals(vals string, data []byte) map[string]string {
 	if vals == "" {
 		return nil
 	}
 
-	values := make(map[string]string)
-	data, err := ioutil.ReadFile(vals)
-	if err != nil {
-		fmt.Printf("Error reading from %s: %v\n", vals, err)
-		return nil
+	if data == nil {
+		data = loadFile(vals)
 	}
 
-	err = yaml.Unmarshal([]byte(data), &values)
+	values := make(map[string]string)
+	err := yaml.Unmarshal([]byte(data), &values)
 	if err != nil {
 		fmt.Printf("Error unmarshalling from %s: %v\n", vals, err)
 		return nil
 	}
 
 	return values
+}
+
+func loadFile(vals string) []byte {
+	if vals == "" {
+		return nil
+	}
+
+	data, err := ioutil.ReadFile(vals)
+	if err != nil {
+		fmt.Printf("Error reading from %s: %v\n", vals, err)
+		return nil
+	}
+
+	return data
 }
 
 func mergeVals(prev map[string]string, next map[string]string) {
@@ -93,14 +127,12 @@ func cUsage() {
 }
 
 func main() {
-	fmt.Println("Starting...")
-
 	var envFile string
-	var outFile string
+	var out bool
 	var plan bool
 	flag.StringVar(&envFile, "env", "", "Environment file with key:value mappings.")
-	flag.StringVar(&outFile, "out", "", "Output primary values as json into file.")
-	flag.BoolVar(&plan, "plan", false, "Compile and output generated values without deploying.")
+	flag.BoolVar(&out, "out", false, "Render initial json marshalled values.")
+	flag.BoolVar(&plan, "plan", false, "Generate chart values without deploying.")
 	flag.Parse()
 	flag.Usage = cUsage
 
@@ -131,8 +163,15 @@ func main() {
 
 	values := make(map[string]string, len(p.Values))
 	mergeVals(values, p.Values)
-	mergeVals(values, loadVals(envFile))
+	mergeVals(values, loadVals(envFile, nil))
+	preRender(p.Derive, values)
 	lint(&p, values)
+
+	if out {
+		postRender(values)
+		return
+	}
+
 	helm := setupHelm()
 	defer close(helm.tiller)
 
@@ -150,16 +189,4 @@ func main() {
 	}
 
 	wg.Wait()
-
-	if outFile != "" && !plan {
-		fmt.Printf("Writing values to %s\n", outFile)
-		valOut, err := json.Marshal(values)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		ioutil.WriteFile(outFile, valOut, 0644)
-	}
-
-	fmt.Println("Done")
 }
