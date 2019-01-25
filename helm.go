@@ -146,7 +146,7 @@ func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, rele
 		helm.InstallDryRun(false),
 	)
 	if err != nil {
-		panic(err)
+		fmt.Println(err)
 	}
 }
 

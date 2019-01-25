@@ -97,8 +97,10 @@ func main() {
 
 	var envFile string
 	var outFile string
+	var plan bool
 	flag.StringVar(&envFile, "env", "", "Environment file with key:value mappings.")
-	flag.StringVar(&outFile, "out", "", "Output primary variables.")
+	flag.StringVar(&outFile, "out", "", "Output primary values as json into file.")
+	flag.BoolVar(&plan, "plan", false, "Compile and output generated values without deploying.")
 	flag.Parse()
 	flag.Usage = cUsage
 
@@ -144,12 +146,12 @@ func main() {
 	wg.Add(len(charts))
 
 	for key, chart := range charts {
-		go newChart(key, *helm, *chart, values, finished, &wg)
+		go newChart(key, *helm, *chart, values, finished, &wg, plan)
 	}
 
 	wg.Wait()
 
-	if outFile != "" {
+	if outFile != "" && !plan {
 		fmt.Printf("Writing values to %s\n", outFile)
 		valOut, err := json.Marshal(values)
 		if err != nil {

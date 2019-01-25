@@ -27,8 +27,8 @@ func render(out *[]byte, file string, values map[string]string) {
 	}
 
 	funcMap := template.FuncMap{
-		"digest": DockerHash,
-		"remove": replaceOne,
+		"digest": dockerHash,
+		"remove": removePattern,
 	}
 
 	t, err := template.New("chart").Funcs(funcMap).Parse(string(data))
@@ -52,14 +52,12 @@ func shellVars(vals map[string]string) []string {
 	return envs
 }
 
-func shellJobs(chart Chart, values []string, jobs []string) {
+func shellJobs(values []string, jobs []string) {
 	for _, command := range jobs {
 		fmt.Printf("Running job: %s\n", command)
 		args := strings.Fields(command)
 		cmd := exec.Command(os.Getenv("SHELL"), args...)
 		cmd.Env = values
-		cmd.Env = append(cmd.Env, fmt.Sprintf("namespace=%s", chart.Namespace))
-		cmd.Env = append(cmd.Env, fmt.Sprintf("release=%s", chart.Release))
 		err := cmd.Run()
 		if err != nil {
 			panic(err)
@@ -67,7 +65,7 @@ func shellJobs(chart Chart, values []string, jobs []string) {
 	}
 }
 
-func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup) {
+func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, plan bool) {
 	defer wg.Done()
 	defer func() { finished <- key }()
 
@@ -77,6 +75,8 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 	}
 
 	mergeVals(values, loadVals(chart.Values))
+	mergeVals(values, map[string]string{"namespace": chart.Namespace})
+	mergeVals(values, map[string]string{"release": chart.Release})
 	reqs := chart.Requires
 	for _, r := range reqs {
 		if _, exists := values[r]; !exists {
@@ -91,15 +91,18 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 		deps = deleteDep(dep, deps)
 	}
 
-	shellJobs(chart, shellVars(values), chart.Jobs.Before)
-	defer shellJobs(chart, shellVars(values), chart.Jobs.After)
+	shellJobs(shellVars(values), chart.Jobs.Before)
+	defer shellJobs(shellVars(values), chart.Jobs.After)
 
 	var out []byte
 	for _, temp := range chart.Templates {
 		render(&out, temp, values)
 	}
 
-	fmt.Println(string(out))
+	if plan {
+		fmt.Println(string(out))
+		return
+	}
 
 	status, err := releaseStatus(helm.client, chart.Release)
 

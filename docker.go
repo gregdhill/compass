@@ -14,12 +14,11 @@ func cleanToken(in string) (out string) {
 	return out
 }
 
-func replaceOne(in, pattern string) string {
+func removePattern(in, pattern string) string {
 	return strings.Replace(in, pattern, "", 1)
 }
 
-// DockerHash pulls the digest for a given container hash.
-func DockerHash(server, repo, tag, token string) string {
+func dockerHash(server, repo, tag, token string) string {
 	server = cleanToken(server)
 	repo = cleanToken(repo)
 	tag = cleanToken(tag)
