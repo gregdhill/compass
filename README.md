@@ -45,13 +45,13 @@ This is designed to mimic the `values.yaml` required by most Helm charts, but it
 compass scroll.yaml
 ```
 
-This will setup `stable/chart` in namespace `default` with the name `my-release`, i.e.:
+This will setup `stable/chart` in namespace `default` with the name `my-release`, analogous to:
 
 ```bash
 helm upgrade --install my-release stable/chart --namespace=default --set 'repository="docker/image",tag="latest",pullPolicy=Always'
 ```
 
-Though the footprint is arguably minimal for most deployments / upgrades, the aim is to simplify multi-chart, multi-environment workflows which would otherwise require monolithic bash scripting.
+However the aim here is to simplify multi-chart, multi-environment workflows (i.e. production vs staging).
 
 ## Advanced
 
@@ -95,10 +95,10 @@ image:
 {{ end }}
 ```
 
-Executing `compass scroll.yaml` will first prepare two releases with one dependency (`test1 -> test2`). When rendering the first values template it will traverse the `production` logic which calls a function named `digest` on the `master` tag. This fetches the latest digest for that release tag from the targeted docker API to ensure that Kubernetes collects our most up-to-date image. Once that has finished installing it will trigger the `test2` deployment. This has a post deployment job which calls a simple bash script called `publish.sh`. This will also have access to all values used in the pipeline such as `.imageRepo` from before.
+Executing `compass scroll.yaml` will first prepare two releases with one dependency (`test1 -> test2`). When rendering the first values template it will traverse the `production` logic which calls a function named `digest` on the `master` tag. This fetches the latest digest for that release tag from the targeted docker API to ensure that Kubernetes collects our most up-to-date image. Once that has finished installing it will trigger the `test2` deployment. This has a post deployment job which calls a simple bash script called `publish.sh`. This will also have access to all values used in the pipeline such as `.imageRepo`.
 
 To get a quick glimpse of what values are generated from your pipeline, use the following command:
 
 ```bash
-compass -out scroll.yaml
+compass scroll.yaml -out
 ```
