@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"testing"
 
@@ -73,6 +74,39 @@ func TestDeleteChart(t *testing.T) {
 
 	err = deleteChart(hc.client, "test-release")
 	assert.NoError(t, err)
+}
+
+func TestInstallChart(t *testing.T) {
+	hc := newTestHelm()
+	c := Chart{
+		Name:    "burrow",
+		Repo:    "stable",
+		Version: "",
+		Release: "test-release",
+	}
+
+	installChart(hc.client, hc.envset, c, nil)
+	out, _ := releaseStatus(hc.client, c.Release)
+	assert.Equal(t, "DEPLOYED", out)
+}
+
+func TestUpgradeChart(t *testing.T) {
+	hc := newTestHelm()
+	c := Chart{
+		Name:    "burrow",
+		Repo:    "stable",
+		Version: "",
+		Release: "test-release",
+	}
+
+	_, err := hc.client.InstallRelease("test-chart", "test-namespace", helm.ReleaseName("test-release"))
+	assert.NoError(t, err)
+
+	upgradeChart(hc.client, hc.envset, c, nil)
+
+	out, _ := releaseStatus(hc.client, "test-release")
+	fmt.Println(out)
+
 }
 
 func TestFindTiller(t *testing.T) {

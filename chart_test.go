@@ -1,10 +1,22 @@
 package main
 
 import (
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
+
+func newTestChart() Chart {
+	c := Chart{
+		Name:      "burrow",
+		Repo:      "stable",
+		Version:   "",
+		Release:   "test-release",
+		Namespace: "test",
+	}
+	return c
+}
 
 func TestDeleteDep(t *testing.T) {
 	deps := []string{"dep1", "dep2"}
@@ -25,4 +37,35 @@ func TestShellJobs(t *testing.T) {
 
 	jobs = []string{"-c commandnotfound"}
 	assert.Panics(t, func() { shellJobs(vals, jobs) })
+}
+
+func TestNewChart(t *testing.T) {
+	hc := newTestHelm()
+	c := newTestChart()
+
+	done := make(chan string, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	values := make(map[string]string, 1)
+	err := newChart("test", *hc, c, values, done, &wg, false)
+	dep := <-done
+	assert.Equal(t, "test", dep)
+	assert.NoError(t, err)
+}
+
+func TestNoNewChart(t *testing.T) {
+	hc := newTestHelm()
+	c := newTestChart()
+	c.Abandon = true
+
+	installChart(hc.client, hc.envset, c, nil)
+	out, _ := releaseStatus(hc.client, c.Release)
+	assert.Equal(t, "DEPLOYED", out)
+
+	done := make(chan string, 1)
+	var wg sync.WaitGroup
+	wg.Add(1)
+	values := make(map[string]string, 1)
+	err := newChart("test", *hc, c, values, done, &wg, false)
+	assert.EqualError(t, err, "chart already installed")
 }

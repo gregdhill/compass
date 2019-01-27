@@ -25,5 +25,6 @@ func TestLinter(t *testing.T) {
 
 	p.Charts["Test"].Namespace = "test"
 	p.Charts["Test"].Release = "test"
-	lint(&p, nil)
+	lint(&p, map[string]string{"Test_version": "1.1"})
+	assert.Equal(t, "1.1", p.Charts["Test"].Version)
 }

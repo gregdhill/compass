@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"html/template"
 	"io/ioutil"
@@ -62,13 +63,13 @@ func shellJobs(values []string, jobs []string) {
 	}
 }
 
-func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, plan bool) {
+func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, plan bool) error {
 	defer wg.Done()
 	defer func() { finished <- key }()
 
 	_, err := releaseStatus(helm.client, chart.Release)
 	if err == nil && chart.Abandon {
-		return
+		return errors.New("chart already installed")
 	}
 
 	lock.Lock()
@@ -80,7 +81,7 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 	reqs := chart.Requires
 	for _, r := range reqs {
 		if _, exists := values[r]; !exists {
-			return
+			return errors.New("requirement not met")
 		}
 	}
 
@@ -105,7 +106,7 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 
 	if plan {
 		fmt.Println(string(out))
-		return
+		return nil
 	}
 
 	status, err := releaseStatus(helm.client, chart.Release)
@@ -116,12 +117,13 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 			deleteChart(helm.client, chart.Release)
 		}
 		fmt.Printf("Installing release %s.\n", chart.Release)
-		installChart(helm.client, helm.envset, chart.Release, chart.Namespace, chart.Repo, chart.Name, chart.Version, out)
+		installChart(helm.client, helm.envset, chart, out)
 		fmt.Printf("Release %s installed.\n", chart.Release)
-		return
+		return nil
 	}
 
 	fmt.Printf("Upgrading release %s.\n", chart.Release)
-	upgradeChart(helm.client, helm.envset, chart.Release, chart.Repo, chart.Name, chart.Version, out)
+	upgradeChart(helm.client, helm.envset, chart, out)
 	fmt.Printf("Release %s upgraded.\n", chart.Release)
+	return nil
 }
