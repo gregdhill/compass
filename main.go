@@ -2,12 +2,12 @@ package main
 
 import (
 	"encoding/json"
-	"flag"
 	"fmt"
 	"io/ioutil"
 	"os"
 	"sync"
 
+	flags "github.com/jessevdk/go-flags"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -126,35 +126,23 @@ func mergeVals(prev map[string]string, next map[string]string) {
 	}
 }
 
-func cUsage() {
-	fmt.Printf("Usage: %s [OPTIONS] scroll ...\n", os.Args[0])
-	flag.PrintDefaults()
-}
-
 func main() {
-	var envFile string
-	var out bool
-	var plan bool
-	flag.StringVar(&envFile, "env", "", "Environment file with key:value mappings.")
-	flag.BoolVar(&out, "out", false, "Render initial json marshalled values.")
-	flag.BoolVar(&plan, "plan", false, "Generate chart values without deploying.")
-	flag.Parse()
-	flag.Usage = cUsage
 
-	if flag.NArg() == 0 {
-		flag.Usage()
+	var opts struct {
+		File string `short:"e" long:"env" description:"YAML file with key:value mappings for values."`
+		Out  bool   `short:"o" long:"out" description:"Render JSON marshalled values from input."`
+		Plan bool   `short:"p" long:"plan" description:"Generate chart values without deploying."`
+		Args struct {
+			Scroll string `description:"YAML pipeline file."`
+		} `positional-args:"yes" required:"yes"`
+	}
+
+	_, err := flags.Parse(&opts)
+	if err != nil {
 		os.Exit(1)
 	}
 
-	pipeline := flag.Arg(0)
-	if pipeline == "" {
-		panic("No pipeline file specified")
-	}
-
-	if envFile == "" {
-		fmt.Println("Not using environment file")
-	}
-
+	pipeline := opts.Args.Scroll
 	p := Pipeline{}
 	data, err := ioutil.ReadFile(pipeline)
 	if err != nil {
@@ -168,11 +156,11 @@ func main() {
 
 	values := make(map[string]string, len(p.Values))
 	mergeVals(values, p.Values)
-	mergeVals(values, loadVals(envFile, nil))
+	mergeVals(values, loadVals(opts.File, nil))
 	preRender(p.Derive, values)
 	lint(&p, values)
 
-	if out {
+	if opts.Out {
 		postRender(values)
 		return
 	}
@@ -190,7 +178,7 @@ func main() {
 	wg.Add(len(charts))
 
 	for key, chart := range charts {
-		go newChart(key, *helm, *chart, values, finished, &wg, plan)
+		go newChart(key, *helm, *chart, values, finished, &wg, opts.Plan)
 	}
 
 	wg.Wait()

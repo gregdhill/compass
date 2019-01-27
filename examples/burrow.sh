@@ -68,12 +68,10 @@ data:
     `cat $genesis | jq -rc .`
 EOF
 
-echo "Garbage collecting..."
 rm $keysTemplate
 rm $valsTemplate
 rm $genSpec
 rm $genesis
 rm -r $keys
-echo -e "Done\n"
 
 kubectl apply -f chain-info.yaml

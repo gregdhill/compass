@@ -1,7 +1,6 @@
 package main
 
 import (
-	"fmt"
 	"os"
 	"testing"
 
@@ -103,10 +102,8 @@ func TestUpgradeChart(t *testing.T) {
 	assert.NoError(t, err)
 
 	upgradeChart(hc.client, hc.envset, c, nil)
-
 	out, _ := releaseStatus(hc.client, "test-release")
-	fmt.Println(out)
-
+	assert.Equal(t, "DEPLOYED", out)
 }
 
 func TestFindTiller(t *testing.T) {
