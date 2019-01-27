@@ -55,8 +55,9 @@ func shellJobs(values []string, jobs []string) {
 		fmt.Printf("Running job: %s\n", command)
 		args := strings.Fields(command)
 		cmd := exec.Command(os.Getenv("SHELL"), args...)
-		cmd.Env = values
-		err := cmd.Run()
+		cmd.Env = append(values, os.Environ()...)
+		stdout, err := cmd.Output()
+		fmt.Println(string(stdout))
 		if err != nil {
 			panic(err)
 		}

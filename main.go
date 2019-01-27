@@ -40,19 +40,18 @@ type Pipeline struct {
 }
 
 func setField(name, field, offset string, values map[string]string, empty bool) string {
-	if field == "" {
-		if ns := values[fmt.Sprintf("%s_%s", name, offset)]; ns != "" {
-			mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): ns})
-			return ns
-		} else if ns := values[offset]; ns != "" {
-			mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): ns})
-			return ns
-		} else {
-			if !empty {
-				panic(fmt.Sprintf("%s chart not given %s", name, offset))
-			}
+	if ns := values[fmt.Sprintf("%s_%s", name, offset)]; ns != "" {
+		mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): ns})
+		return ns
+	} else if ns := values[offset]; ns != "" {
+		mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): ns})
+		return ns
+	} else if field == "" {
+		if !empty {
+			panic(fmt.Sprintf("%s chart not given %s", name, offset))
 		}
 	}
+	mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): field})
 	return field
 }
 
@@ -65,6 +64,9 @@ func lint(p *Pipeline, values map[string]string) {
 }
 
 func preRender(tpl string, values map[string]string) map[string]string {
+	if tpl == "" {
+		return values
+	}
 	data, err := ioutil.ReadFile(tpl)
 	if err != nil {
 		panic(err)

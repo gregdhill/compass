@@ -1,0 +1,12 @@
+charts:
+        chain:
+                name: burrow
+                repo: stable
+                release: hyperledger-burrow
+                namespace: default
+                jobs:
+                        before:
+                        - ./examples/burrow.sh
+                templates:
+                - initialize.yaml
+                
