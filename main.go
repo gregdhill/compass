@@ -39,27 +39,36 @@ type Pipeline struct {
 	Values map[string]string `yaml:"values"`
 }
 
-func setField(name, field, offset string, values map[string]string, empty bool) string {
-	if ns := values[fmt.Sprintf("%s_%s", name, offset)]; ns != "" {
-		mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): ns})
-		return ns
-	} else if ns := values[offset]; ns != "" {
-		mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): ns})
-		return ns
-	} else if field == "" {
-		if !empty {
-			panic(fmt.Sprintf("%s chart not given %s", name, offset))
+func setField(name, chart, target, offset string, values map[string]string, empty bool) (field string) {
+	fields := [3]string{
+		values[fmt.Sprintf("%s_%s", name, offset)],
+		values[offset],
+		target,
+	}
+
+	for _, field = range fields {
+		if field != "" {
+			if chart != "" {
+				field = fmt.Sprintf("%s-%s", field, chart)
+			}
+			mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): field})
+			return
 		}
 	}
-	mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): field})
-	return field
+
+	if !empty {
+		panic(fmt.Sprintf("%s chart not given %s", name, offset))
+	}
+
+	mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): target})
+	return
 }
 
 func lint(p *Pipeline, values map[string]string) {
 	for n, c := range p.Charts {
-		c.Namespace = setField(n, c.Namespace, "namespace", values, false)
-		c.Release = setField(n, c.Release, "release", values, false)
-		c.Version = setField(n, c.Version, "version", values, true)
+		c.Namespace = setField(n, "", c.Namespace, "namespace", values, false)
+		c.Release = setField(n, c.Name, c.Release, "release", values, false)
+		c.Version = setField(n, "", c.Version, "version", values, true)
 	}
 }
 
