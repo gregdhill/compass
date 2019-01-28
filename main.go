@@ -138,12 +138,12 @@ func mergeVals(prev map[string]string, next map[string]string) {
 func main() {
 
 	var opts struct {
-		File string `short:"e" long:"env" description:"YAML file with key:value mappings for values."`
-		Out  bool   `short:"o" long:"out" description:"Render JSON marshalled values from input."`
-		Plan bool   `short:"p" long:"plan" description:"Generate chart values without deploying."`
 		Args struct {
 			Scroll string `description:"YAML pipeline file."`
 		} `positional-args:"yes" required:"yes"`
+		File    string `short:"e" long:"env" description:"YAML file with key:value mappings for values"`
+		Out     bool   `short:"o" long:"out" description:"Render JSON marshalled values from input"`
+		Verbose bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
 	}
 
 	_, err := flags.Parse(&opts)
@@ -151,6 +151,7 @@ func main() {
 		os.Exit(1)
 	}
 
+	verbose := opts.Verbose
 	pipeline := opts.Args.Scroll
 	p := Pipeline{}
 	data, err := ioutil.ReadFile(pipeline)
@@ -187,7 +188,7 @@ func main() {
 	wg.Add(len(charts))
 
 	for key, chart := range charts {
-		go newChart(key, *helm, *chart, values, finished, &wg, opts.Plan)
+		go newChart(key, *helm, *chart, values, finished, &wg, verbose)
 	}
 
 	wg.Wait()

@@ -50,21 +50,23 @@ func shellVars(vals map[string]string) []string {
 	return envs
 }
 
-func shellJobs(values []string, jobs []string) {
+func shellJobs(values []string, jobs []string, verbose bool) {
 	for _, command := range jobs {
 		fmt.Printf("Running job: %s\n", command)
 		args := strings.Fields(command)
 		cmd := exec.Command(os.Getenv("SHELL"), args...)
 		cmd.Env = append(values, os.Environ()...)
 		stdout, err := cmd.Output()
-		fmt.Println(string(stdout))
+		if verbose && stdout != nil {
+			fmt.Println(string(stdout))
+		}
 		if err != nil {
 			panic(err)
 		}
 	}
 }
 
-func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, plan bool) error {
+func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool) error {
 	defer wg.Done()
 	defer func() { finished <- key }()
 
@@ -93,8 +95,8 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 		deps = deleteDep(dep, deps)
 	}
 
-	shellJobs(shellVars(values), chart.Jobs.Before)
-	defer shellJobs(shellVars(values), chart.Jobs.After)
+	shellJobs(shellVars(values), chart.Jobs.Before, verbose)
+	defer shellJobs(shellVars(values), chart.Jobs.After, verbose)
 
 	var out []byte
 	for _, temp := range chart.Templates {
@@ -105,9 +107,9 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 		generate(&data, &out, values)
 	}
 
-	if plan {
+	fmt.Println(verbose)
+	if verbose {
 		fmt.Println(string(out))
-		return nil
 	}
 
 	status, err := releaseStatus(helm.client, chart.Release)
