@@ -54,7 +54,7 @@ func shellJobs(values []string, jobs []string, verbose bool) {
 	for _, command := range jobs {
 		fmt.Printf("Running job: %s\n", command)
 		args := strings.Fields(command)
-		cmd := exec.Command(os.Getenv("SHELL"), args...)
+		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Env = append(values, os.Environ()...)
 		stdout, err := cmd.Output()
 		if verbose && stdout != nil {
@@ -107,7 +107,6 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 		generate(&data, &out, values)
 	}
 
-	fmt.Println(verbose)
 	if verbose {
 		fmt.Println(string(out))
 	}

@@ -32,10 +32,10 @@ func TestShellVars(t *testing.T) {
 
 func TestShellJobs(t *testing.T) {
 	vals := []string{"chart=test"}
-	jobs := []string{"-c echo \"hello\""}
+	jobs := []string{"echo \"hello\""}
 	shellJobs(vals, jobs, false)
 
-	jobs = []string{"-c commandnotfound"}
+	jobs = []string{"commandnotfound"}
 	assert.Panics(t, func() { shellJobs(vals, jobs, false) })
 }
 

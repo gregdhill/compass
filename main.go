@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"os"
+	"path"
+	"path/filepath"
 	"sync"
 
 	flags "github.com/jessevdk/go-flags"
@@ -64,11 +67,17 @@ func setField(name, chart, target, offset string, values map[string]string, empt
 	return
 }
 
-func lint(p *Pipeline, values map[string]string) {
+func lint(p *Pipeline, values map[string]string, root string) {
 	for n, c := range p.Charts {
 		c.Namespace = setField(n, "", c.Namespace, "namespace", values, false)
 		c.Release = setField(n, c.Name, c.Release, "release", values, false)
 		c.Version = setField(n, "", c.Version, "version", values, true)
+		for i, j := range c.Jobs.Before {
+			c.Jobs.Before[i] = path.Join(root, j)
+		}
+		for i, j := range c.Jobs.After {
+			c.Jobs.After[i] = path.Join(root, j)
+		}
 	}
 }
 
@@ -156,19 +165,23 @@ func main() {
 	p := Pipeline{}
 	data, err := ioutil.ReadFile(pipeline)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
+	}
+	dir, err := filepath.Abs(filepath.Dir(pipeline))
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	err = yaml.Unmarshal([]byte(data), &p)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	values := make(map[string]string, len(p.Values))
 	mergeVals(values, p.Values)
 	mergeVals(values, loadVals(opts.File, nil))
 	preRender(p.Derive, values)
-	lint(&p, values)
+	lint(&p, values, dir)
 
 	if opts.Out {
 		postRender(values)
