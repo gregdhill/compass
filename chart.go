@@ -66,7 +66,42 @@ func shellJobs(values []string, jobs []string, verbose bool) {
 	}
 }
 
-func newChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool) error {
+func checkRequires(values map[string]string, reqs []string) error {
+	for _, r := range reqs {
+		if _, exists := values[r]; !exists {
+			return errors.New("requirement not met")
+		}
+	}
+	return nil
+}
+
+func rmChart(key string, helm Helm, chart Chart, values map[string]string, deps map[string]int, finished chan string, wg *sync.WaitGroup, verbose bool) error {
+	defer wg.Done()
+	defer func() {
+		for _, d := range chart.Depends {
+			finished <- d
+		}
+	}()
+
+	err := checkRequires(values, chart.Requires)
+	if err != nil {
+		return err
+	}
+
+	for deps[key] > 0 {
+		dep := <-finished
+		if key == dep {
+			deps[key]--
+		} else {
+			finished <- dep
+		}
+	}
+
+	fmt.Printf("Deleting: %s\n", chart.Release)
+	return deleteChart(helm.client, chart.Release)
+}
+
+func mkChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool) error {
 	defer wg.Done()
 	defer func() { finished <- key }()
 
@@ -81,11 +116,9 @@ func newChart(key string, helm Helm, chart Chart, values map[string]string, fini
 	mergeVals(values, map[string]string{"release": chart.Release})
 	lock.Unlock()
 
-	reqs := chart.Requires
-	for _, r := range reqs {
-		if _, exists := values[r]; !exists {
-			return errors.New("requirement not met")
-		}
+	err = checkRequires(values, chart.Requires)
+	if err != nil {
+		return err
 	}
 
 	deps := chart.Depends

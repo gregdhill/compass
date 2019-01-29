@@ -150,6 +150,7 @@ func main() {
 		Args struct {
 			Scroll string `description:"YAML pipeline file."`
 		} `positional-args:"yes" required:"yes"`
+		Destroy bool   `short:"d" long:"destroy" description:"Purge all releases, top-down."`
 		File    string `short:"e" long:"env" description:"YAML file with key:value mappings for values"`
 		Out     bool   `short:"o" long:"out" description:"Render JSON marshalled values from input"`
 		Verbose bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
@@ -160,13 +161,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	verbose := opts.Verbose
 	pipeline := opts.Args.Scroll
 	p := Pipeline{}
 	data, err := ioutil.ReadFile(pipeline)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	dir, err := filepath.Abs(filepath.Dir(pipeline))
 	if err != nil {
 		log.Fatal(err)
@@ -188,6 +189,7 @@ func main() {
 		return
 	}
 
+	verbose := opts.Verbose
 	helm := setupHelm()
 	defer close(helm.tiller)
 
@@ -199,10 +201,23 @@ func main() {
 	finished := make(chan string, len(charts))
 	var wg sync.WaitGroup
 	wg.Add(len(charts))
+	defer wg.Wait()
 
-	for key, chart := range charts {
-		go newChart(key, *helm, *chart, values, finished, &wg, verbose)
+	if opts.Destroy {
+		deps := make(map[string]int, len(charts))
+		for _, chart := range charts {
+			for _, d := range chart.Depends {
+				deps[d]++
+			}
+		}
+
+		for key, chart := range charts {
+			go rmChart(key, *helm, *chart, values, deps, finished, &wg, verbose)
+		}
+		return
 	}
 
-	wg.Wait()
+	for key, chart := range charts {
+		go mkChart(key, *helm, *chart, values, finished, &wg, verbose)
+	}
 }
