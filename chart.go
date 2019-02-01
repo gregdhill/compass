@@ -13,8 +13,6 @@ import (
 	"sync"
 )
 
-var lock sync.Mutex
-
 func deleteDep(index string, deps []string) []string {
 	for i, j := range deps {
 		if j == index {
@@ -77,7 +75,16 @@ func checkRequires(values map[string]string, reqs []string) error {
 	return nil
 }
 
-func rmChart(key string, helm Helm, chart Chart, values map[string]string, deps map[string]int, finished chan string, wg *sync.WaitGroup, verbose bool) error {
+func cpVals(prev map[string]string) map[string]string {
+	// copy values from main for individual chart
+	values := make(map[string]string, len(prev))
+	for k, v := range prev {
+		values[k] = v
+	}
+	return values
+}
+
+func rmChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool, deps int) error {
 	defer wg.Done()
 	defer func() {
 		for _, d := range chart.Depends {
@@ -90,20 +97,20 @@ func rmChart(key string, helm Helm, chart Chart, values map[string]string, deps 
 		return err
 	}
 
-	for deps[key] > 0 {
+	for deps > 0 {
 		dep := <-finished
 		if key == dep {
-			deps[key]--
+			deps--
 		} else {
 			finished <- dep
 		}
 	}
 
-	log.Printf("deleting: %s\n", chart.Release)
+	log.Printf("deleting %s\n", chart.Release)
 	return deleteChart(helm.client, chart.Release)
 }
 
-func mkChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool) error {
+func mkChart(key string, helm Helm, chart Chart, mainVals map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool) error {
 	defer wg.Done()
 	defer func() { finished <- key }()
 
@@ -112,11 +119,10 @@ func mkChart(key string, helm Helm, chart Chart, values map[string]string, finis
 		return errors.New("chart already installed")
 	}
 
-	lock.Lock()
+	values := cpVals(mainVals)
 	mergeVals(values, loadVals(chart.Values, nil))
 	mergeVals(values, map[string]string{"namespace": chart.Namespace})
 	mergeVals(values, map[string]string{"release": chart.Release})
-	lock.Unlock()
 
 	err = checkRequires(values, chart.Requires)
 	if err != nil {

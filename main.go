@@ -211,7 +211,7 @@ func main() {
 		}
 
 		for key, chart := range charts {
-			go rmChart(key, *helm, *chart, values, deps, finished, &wg, verbose)
+			go rmChart(key, *helm, *chart, values, finished, &wg, verbose, deps[key])
 		}
 		return
 	}
