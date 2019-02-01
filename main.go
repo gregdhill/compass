@@ -90,7 +90,7 @@ func preRender(tpl string, values map[string]string) map[string]string {
 		panic(err)
 	}
 	var out []byte
-	generate(&data, &out, values)
+	generate(tpl, &data, &out, values)
 	mergeVals(values, loadVals(tpl, out))
 
 	return values
@@ -99,8 +99,7 @@ func preRender(tpl string, values map[string]string) map[string]string {
 func postRender(values map[string]string) {
 	valOut, err := json.Marshal(values)
 	if err != nil {
-		fmt.Println(err)
-		return
+		panic(err)
 	}
 	fmt.Println(string(valOut))
 }
@@ -117,7 +116,7 @@ func loadVals(vals string, data []byte) map[string]string {
 	values := make(map[string]string)
 	err := yaml.Unmarshal([]byte(data), &values)
 	if err != nil {
-		fmt.Printf("Error unmarshalling from %s: %v\n", vals, err)
+		log.Printf("error unmarshalling from %s: %v\n", vals, err)
 		return nil
 	}
 
@@ -131,7 +130,7 @@ func loadFile(vals string) []byte {
 
 	data, err := ioutil.ReadFile(vals)
 	if err != nil {
-		fmt.Printf("Error reading from %s: %v\n", vals, err)
+		log.Printf("error reading from %s: %v\n", vals, err)
 		return nil
 	}
 
@@ -195,7 +194,7 @@ func main() {
 
 	charts := p.Charts
 	if len(charts) == 0 {
-		panic("No charts specified")
+		log.Fatalln("no charts specified")
 	}
 
 	finished := make(chan string, len(charts))

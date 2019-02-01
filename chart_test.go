@@ -36,7 +36,8 @@ func TestShellJobs(t *testing.T) {
 	shellJobs(vals, jobs, false)
 
 	jobs = []string{"commandnotfound"}
-	assert.Panics(t, func() { shellJobs(vals, jobs, false) })
+	err := shellJobs(vals, jobs, false)
+	assert.Errorf(t, err, "exec: \"commandnotfound\": executable file not found in $PATH")
 }
 
 func TestNewChart(t *testing.T) {

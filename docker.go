@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"strings"
@@ -11,7 +12,7 @@ import (
 func cleanToken(in string) (out string) {
 	out = strings.Replace(in, "v2", "", -1)
 	out = strings.Trim(out, "/")
-	return out
+	return
 }
 
 func removePattern(in, pattern string) string {
@@ -26,7 +27,7 @@ func dockerHash(server, repo, tag, token string) string {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v2/%s/manifests/%s", server, repo, tag), nil)
 	if err != nil {
-		return tag
+		log.Fatalf("failed to get digest for %s:%s : %s\n", repo, tag, err)
 	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", os.Getenv(token)))
@@ -35,7 +36,7 @@ func dockerHash(server, repo, tag, token string) string {
 	req.Header.Add("Accept", "application/vnd.docker.distribution.manifest.v2+json")
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
-		return tag
+		log.Fatalf("failed to get digest for %s:%s : %s\n", repo, tag, err)
 	}
 
 	return strings.Split(resp.Header["Docker-Content-Digest"][0], ":")[1]

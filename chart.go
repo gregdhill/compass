@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"html/template"
 	"io/ioutil"
+	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -23,21 +24,21 @@ func deleteDep(index string, deps []string) []string {
 	return deps
 }
 
-func generate(data, out *[]byte, values map[string]string) {
+func generate(name string, data, out *[]byte, values map[string]string) {
 	funcMap := template.FuncMap{
 		"digest": dockerHash,
 		"remove": removePattern,
 	}
 
-	t, err := template.New("chart").Funcs(funcMap).Parse(string(*data))
+	t, err := template.New(name).Funcs(funcMap).Parse(string(*data))
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to render %s : %s\n", name, err)
 	}
 
 	buf := new(bytes.Buffer)
 	err = t.Execute(buf, values)
 	if err != nil {
-		panic(err)
+		log.Fatalf("failed to render %s : %s\n", name, err)
 	}
 	*out = append(*out, buf.Bytes()...)
 }
@@ -50,9 +51,9 @@ func shellVars(vals map[string]string) []string {
 	return envs
 }
 
-func shellJobs(values []string, jobs []string, verbose bool) {
+func shellJobs(values []string, jobs []string, verbose bool) error {
 	for _, command := range jobs {
-		fmt.Printf("Running job: %s\n", command)
+		log.Printf("running job: %s\n", command)
 		args := strings.Fields(command)
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Env = append(values, os.Environ()...)
@@ -61,9 +62,10 @@ func shellJobs(values []string, jobs []string, verbose bool) {
 			fmt.Println(string(stdout))
 		}
 		if err != nil {
-			panic(err)
+			return err
 		}
 	}
+	return nil
 }
 
 func checkRequires(values map[string]string, reqs []string) error {
@@ -97,7 +99,7 @@ func rmChart(key string, helm Helm, chart Chart, values map[string]string, deps 
 		}
 	}
 
-	fmt.Printf("Deleting: %s\n", chart.Release)
+	log.Printf("deleting: %s\n", chart.Release)
 	return deleteChart(helm.client, chart.Release)
 }
 
@@ -137,7 +139,7 @@ func mkChart(key string, helm Helm, chart Chart, values map[string]string, finis
 		if read != nil {
 			panic(read)
 		}
-		generate(&data, &out, values)
+		generate(temp, &data, &out, values)
 	}
 
 	if verbose {
@@ -145,20 +147,25 @@ func mkChart(key string, helm Helm, chart Chart, values map[string]string, finis
 	}
 
 	status, err := releaseStatus(helm.client, chart.Release)
-
 	if status == "PENDING_INSTALL" || err != nil {
 		if err == nil {
-			fmt.Printf("Deleting release %s.\n", chart.Release)
+			log.Printf("deleting release: %s\n", chart.Release)
 			deleteChart(helm.client, chart.Release)
 		}
-		fmt.Printf("Installing release %s.\n", chart.Release)
-		installChart(helm.client, helm.envset, chart, out)
-		fmt.Printf("Release %s installed.\n", chart.Release)
+		log.Printf("installing release: %s\n", chart.Release)
+		err := installChart(helm.client, helm.envset, chart, out)
+		if err != nil {
+			log.Fatalf("failed to install %s : %s\n", chart.Release, err)
+		}
+		log.Printf("release %s installed\n", chart.Release)
 		return nil
 	}
 
-	fmt.Printf("Upgrading release %s.\n", chart.Release)
+	log.Printf("upgrading release: %s\n", chart.Release)
 	upgradeChart(helm.client, helm.envset, chart, out)
-	fmt.Printf("Release %s upgraded.\n", chart.Release)
+	if err != nil {
+		log.Fatalf("failed to install %s : %s\n", chart.Release, err)
+	}
+	log.Printf("release upgraded: %s\n", chart.Release)
 	return nil
 }

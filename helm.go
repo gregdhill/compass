@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -74,7 +75,7 @@ func setupHelm() *Helm {
 func findTiller(namespace string, k8s *k8s) string {
 	pods, err := k8s.client.Core().Pods(namespace).List(metav1.ListOptions{LabelSelector: "name=tiller"})
 	if err != nil || len(pods.Items) != 1 {
-		panic("Tiller not found.")
+		log.Fatalln("tiller not found.")
 	}
 	return pods.Items[0].Name
 }
@@ -118,7 +119,7 @@ func downloadChart(location, version string, settings helm_env.EnvSettings) (str
 		Getters:  getter.All(settings),
 	}
 	if _, err := os.Stat(settings.Home.Archive()); os.IsNotExist(err) {
-		fmt.Printf("Creating '%s' directory.\n", settings.Home.Archive())
+		fmt.Printf("creating directory: %s\n", settings.Home.Archive())
 		os.MkdirAll(settings.Home.Archive(), 0744)
 	}
 
@@ -126,14 +127,21 @@ func downloadChart(location, version string, settings helm_env.EnvSettings) (str
 	return chart, err
 }
 
-func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, chart Chart, values []byte) {
+func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, chart Chart, values []byte) error {
 	name := fmt.Sprintf("%s/%s", chart.Repo, chart.Name)
 
-	crt, _ := downloadChart(name, chart.Version, settings)
-	requestedChart, _ := chartutil.Load(crt)
-	chartutil.LoadRequirements(requestedChart)
+	crt, err := downloadChart(name, chart.Version, settings)
+	if err != nil {
+		return err
+	}
 
-	_, err := helmClient.InstallReleaseFromChart(
+	requestedChart, err := chartutil.Load(crt)
+	if err != nil {
+		return err
+	}
+
+	chartutil.LoadRequirements(requestedChart)
+	_, err = helmClient.InstallReleaseFromChart(
 		requestedChart,
 		chart.Namespace,
 		helm.ReleaseName(chart.Release),
@@ -143,17 +151,21 @@ func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, char
 		helm.InstallDryRun(false),
 	)
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
+	return nil
 }
 
-func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, chart Chart, values []byte) {
+func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, chart Chart, values []byte) error {
 	_, _ = url.ParseRequestURI(chart.Repo)
 	name := fmt.Sprintf("%s/%s", chart.Repo, chart.Name)
 
-	crt, _ := downloadChart(name, chart.Version, settings)
+	crt, err := downloadChart(name, chart.Version, settings)
+	if err != nil {
+		return err
+	}
 
-	_, err := helmClient.UpdateRelease(
+	_, err = helmClient.UpdateRelease(
 		chart.Release,
 		crt,
 		helm.UpgradeTimeout(300),
@@ -161,8 +173,9 @@ func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, char
 		helm.UpgradeDryRun(false),
 	)
 	if err != nil {
-		fmt.Println(err)
+		return err
 	}
+	return nil
 }
 
 func deleteChart(helmClient helm.Interface, release string) error {
