@@ -2,7 +2,18 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/gregdhill/compass)](https://goreportcard.com/report/github.com/gregdhill/compass)
 
-Inspired by [bashful](https://github.com/wagoodman/bashful), compass is a declarative pipelining and templating tool for Helm. Simply describe how the environment should be setup, and it will chart out a direction for your stack(s). It is still in an early phase of development, so please use with caution.
+Inspired by [bashful](https://github.com/wagoodman/bashful), compass is a declarative pipelining and templating tool for Helm. Simply describe how the environment should be setup, and it will chart out a direction for your stack(s). As it is still in early development, please use with caution.
+
+## Features
+
+- [x] Stack Creation / Destruction
+- [x] Chart Dependencies & Variable Requirements
+- [x] Install & Forget Chart
+- [x] Fetch Docker Digest By Tag
+- [x] Pre/Post-Deployment Bash Jobs
+- [x] Explicit or Global Values (Namespace, Release, Version)
+- [x] Derive Values From Extra Init Template
+- [x] Output JSON Values
 
 ## Installation
 
