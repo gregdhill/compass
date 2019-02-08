@@ -197,7 +197,7 @@ func main() {
 		log.Fatalln("no charts specified")
 	}
 
-	finished := make(chan string, len(charts))
+	wgs := make(map[string]*sync.WaitGroup, len(charts))
 	var wg sync.WaitGroup
 	wg.Add(len(charts))
 	defer wg.Wait()
@@ -210,13 +210,25 @@ func main() {
 			}
 		}
 
+		for key := range charts {
+			var w sync.WaitGroup
+			w.Add(deps[key])
+			wgs[key] = &w
+		}
+
 		for key, chart := range charts {
-			go rmChart(key, *helm, *chart, values, finished, &wg, verbose, deps[key])
+			go rmChart(key, *helm, *chart, values, verbose, &wg, wgs)
 		}
 		return
 	}
 
+	for key := range charts {
+		var w sync.WaitGroup
+		w.Add(1)
+		wgs[key] = &w
+	}
+
 	for key, chart := range charts {
-		go mkChart(key, *helm, *chart, values, finished, &wg, verbose)
+		go mkChart(key, *helm, *chart, values, verbose, &wg, wgs)
 	}
 }

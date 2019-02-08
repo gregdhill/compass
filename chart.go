@@ -84,11 +84,13 @@ func cpVals(prev map[string]string) map[string]string {
 	return values
 }
 
-func rmChart(key string, helm Helm, chart Chart, values map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool, deps int) error {
+func rmChart(key string, helm Helm, chart Chart, values map[string]string, verbose bool,
+	wg *sync.WaitGroup, deps map[string]*sync.WaitGroup) error {
+
 	defer wg.Done()
 	defer func() {
 		for _, d := range chart.Depends {
-			finished <- d
+			deps[d].Done()
 		}
 	}()
 
@@ -97,29 +99,24 @@ func rmChart(key string, helm Helm, chart Chart, values map[string]string, finis
 		return err
 	}
 
-	for deps > 0 {
-		dep := <-finished
-		if key == dep {
-			deps--
-		} else {
-			finished <- dep
-		}
-	}
+	deps[key].Wait()
 
 	log.Printf("deleting %s\n", chart.Release)
 	return deleteChart(helm.client, chart.Release)
 }
 
-func mkChart(key string, helm Helm, chart Chart, mainVals map[string]string, finished chan string, wg *sync.WaitGroup, verbose bool) error {
+func mkChart(key string, helm Helm, chart Chart, main map[string]string, verbose bool,
+	wg *sync.WaitGroup, deps map[string]*sync.WaitGroup) error {
+
 	defer wg.Done()
-	defer func() { finished <- key }()
+	defer func() { deps[key].Done() }()
 
 	_, err := releaseStatus(helm.client, chart.Release)
 	if err == nil && chart.Abandon {
 		return errors.New("chart already installed")
 	}
 
-	values := cpVals(mainVals)
+	values := cpVals(main)
 	mergeVals(values, loadVals(chart.Values, nil))
 	mergeVals(values, map[string]string{"namespace": chart.Namespace})
 	mergeVals(values, map[string]string{"release": chart.Release})
@@ -129,11 +126,9 @@ func mkChart(key string, helm Helm, chart Chart, mainVals map[string]string, fin
 		return err
 	}
 
-	deps := chart.Depends
-	for len(deps) > 0 {
-		dep := <-finished
-		finished <- dep
-		deps = deleteDep(dep, deps)
+	for _, dep := range chart.Depends {
+		fmt.Println(dep)
+		deps[dep].Wait()
 	}
 
 	shellJobs(shellVars(values), chart.Jobs.Before, verbose)

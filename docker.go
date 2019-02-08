@@ -27,7 +27,7 @@ func dockerHash(server, repo, tag, token string) string {
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v2/%s/manifests/%s", server, repo, tag), nil)
 	if err != nil {
-		log.Fatalf("failed to get digest for %s:%s : %s\n", repo, tag, err)
+		log.Fatalf("failed to get digest for %s:%s : %v\n", repo, tag, err)
 	}
 
 	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", os.Getenv(token)))
@@ -36,7 +36,7 @@ func dockerHash(server, repo, tag, token string) string {
 	req.Header.Add("Accept", "application/vnd.docker.distribution.manifest.v2+json")
 	resp, err := client.Do(req)
 	if err != nil || resp.StatusCode != 200 {
-		log.Fatalf("failed to get digest for %s:%s : %s\n", repo, tag, err)
+		log.Fatalf("failed to get digest for %s:%s : %v\n", repo, tag, err)
 	}
 
 	return strings.Split(resp.Header["Docker-Content-Digest"][0], ":")[1]

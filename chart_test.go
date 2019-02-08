@@ -44,13 +44,16 @@ func TestNewChart(t *testing.T) {
 	hc := newTestHelm()
 	c := newTestChart()
 
-	done := make(chan string, 1)
 	var wg sync.WaitGroup
 	wg.Add(1)
+
+	wgs := make(map[string]*sync.WaitGroup, 1)
+	var w sync.WaitGroup
+	w.Add(1)
+	wgs["test"] = &w
+
 	values := make(map[string]string, 1)
-	err := mkChart("test", *hc, c, values, done, &wg, false)
-	dep := <-done
-	assert.Equal(t, "test", dep)
+	err := mkChart("test", *hc, c, values, false, &wg, wgs)
 	assert.NoError(t, err)
 }
 
@@ -63,10 +66,15 @@ func TestNoNewChart(t *testing.T) {
 	out, _ := releaseStatus(hc.client, c.Release)
 	assert.Equal(t, "DEPLOYED", out)
 
-	done := make(chan string, 1)
 	var wg sync.WaitGroup
 	wg.Add(1)
+
+	wgs := make(map[string]*sync.WaitGroup, 1)
+	var w sync.WaitGroup
+	w.Add(1)
+	wgs["test"] = &w
+
 	values := make(map[string]string, 1)
-	err := mkChart("test", *hc, c, values, done, &wg, false)
+	err := mkChart("test", *hc, c, values, false, &wg, wgs)
 	assert.EqualError(t, err, "chart already installed")
 }
