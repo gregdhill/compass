@@ -26,6 +26,7 @@ type Chart struct {
 	Repo      string   `yaml:"repo"`      // chart repo
 	Version   string   `yaml:"version"`   // chart version
 	Release   string   `yaml:"release"`   // release name
+	Timeout   int64    `yaml:"timeout"`   // install / upgrade wait time
 	Namespace string   `yaml:"namespace"` // namespace
 	Abandon   bool     `yaml:"abandon"`   // install only
 	Values    string   `yaml:"values"`    // chart specific values
@@ -77,6 +78,9 @@ func lint(p *Pipeline, values map[string]string, root string) {
 		}
 		for i, j := range c.Jobs.After {
 			c.Jobs.After[i] = path.Join(root, j)
+		}
+		if c.Timeout == 0 {
+			c.Timeout = 300
 		}
 	}
 }

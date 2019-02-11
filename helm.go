@@ -146,7 +146,7 @@ func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, char
 		chart.Namespace,
 		helm.ReleaseName(chart.Release),
 		helm.InstallWait(true),
-		helm.InstallTimeout(300),
+		helm.InstallTimeout(chart.Timeout),
 		helm.ValueOverrides(values),
 		helm.InstallDryRun(false),
 	)
@@ -168,7 +168,7 @@ func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, char
 	_, err = helmClient.UpdateRelease(
 		chart.Release,
 		crt,
-		helm.UpgradeTimeout(300),
+		helm.UpgradeTimeout(chart.Timeout),
 		helm.UpdateValueOverrides(values),
 		helm.UpgradeDryRun(false),
 	)
