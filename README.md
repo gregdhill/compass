@@ -1,6 +1,6 @@
 # Compass
 
-[![Go Report Card](https://goreportcard.com/badge/github.com/gregdhill/compass)](https://goreportcard.com/report/github.com/gregdhill/compass)
+[![Go Report Card](https://goreportcard.com/badge/github.com/gregdhill/compass)](https://goreportcard.com/report/github.com/monax/compass)
 
 Inspired by [bashful](https://github.com/wagoodman/bashful), compass is a declarative pipelining and templating tool for Helm. Simply describe how the environment should be setup, and it will chart out a direction for your stack(s). As it is still in early development, please use with caution.
 
@@ -18,7 +18,7 @@ Inspired by [bashful](https://github.com/wagoodman/bashful), compass is a declar
 ## Installation
 
 ```bash
-go get github.com/gregdhill/compass
+go get github.com/monax/compass
 ```
 
 ## Getting Started
@@ -50,7 +50,7 @@ image:
   pullPolicy: Always
 ```
 
-This is designed to mimic the `values.yaml` required by most Helm charts, but it also allows us to add an extra layer of templating on top. Additional arguments can also be added from a file specified by the `-env` flag. Let's build what we have so far:
+This is designed to mimic the `values.yaml` required by most Helm charts, but it also allows us to add an extra layer of templating on top. Additional arguments can also be added from a file specified by the `--import` flag. Let's build what we have so far:
 
 ```bash
 compass scroll.yaml
@@ -111,5 +111,5 @@ Executing `compass scroll.yaml` will first prepare two releases with one depende
 To get a quick glimpse of what values are generated from your pipeline, use the following command:
 
 ```bash
-compass scroll.yaml -out
+compass scroll.yaml -export
 ```

@@ -127,7 +127,6 @@ func mkChart(key string, helm Helm, chart Chart, main map[string]string, verbose
 	}
 
 	for _, dep := range chart.Depends {
-		fmt.Println(dep)
 		deps[dep].Wait()
 	}
 

@@ -91,7 +91,7 @@ func preRender(tpl string, values map[string]string) map[string]string {
 	}
 	data, err := ioutil.ReadFile(tpl)
 	if err != nil {
-		panic(err)
+		log.Fatalf("couldn't read from %s\n", tpl)
 	}
 	var out []byte
 	generate(tpl, &data, &out, values)
@@ -153,10 +153,11 @@ func main() {
 		Args struct {
 			Scroll string `description:"YAML pipeline file."`
 		} `positional-args:"yes" required:"yes"`
-		Destroy bool   `short:"d" long:"destroy" description:"Purge all releases, top-down."`
-		File    string `short:"e" long:"env" description:"YAML file with key:value mappings for values"`
-		Out     bool   `short:"o" long:"out" description:"Render JSON marshalled values from input"`
+		Destroy bool   `short:"d" long:"destroy" description:"Purge all releases, top-down"`
+		Export  bool   `short:"e" long:"export" description:"Render JSON marshalled values"`
+		Import  string `short:"i" long:"import" description:"YAML file with key:value mappings"`
 		Verbose bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
+		Until   string `short:"u" long:"until" description:"Deploy chart and dependencies"`
 	}
 
 	_, err := flags.Parse(&opts)
@@ -183,11 +184,11 @@ func main() {
 
 	values := make(map[string]string, len(p.Values))
 	mergeVals(values, p.Values)
-	mergeVals(values, loadVals(opts.File, nil))
+	mergeVals(values, loadVals(opts.Import, nil))
 	preRender(p.Derive, values)
 	lint(&p, values, dir)
 
-	if opts.Out {
+	if opts.Export {
 		postRender(values)
 		return
 	}
@@ -203,10 +204,11 @@ func main() {
 
 	wgs := make(map[string]*sync.WaitGroup, len(charts))
 	var wg sync.WaitGroup
-	wg.Add(len(charts))
 	defer wg.Wait()
 
+	// reverse workflow: helm del --purge
 	if opts.Destroy {
+		wg.Add(len(charts))
 		deps := make(map[string]int, len(charts))
 		for _, chart := range charts {
 			for _, d := range chart.Depends {
@@ -227,11 +229,27 @@ func main() {
 	}
 
 	for key := range charts {
+		// chart dependencies wait on this
 		var w sync.WaitGroup
 		w.Add(1)
 		wgs[key] = &w
 	}
 
+	// stop at desired chart
+	if opts.Until != "" {
+		if _, ok := charts[opts.Until]; !ok {
+			log.Fatalf("%s does not exist", opts.Until)
+		}
+		go mkChart(opts.Until, *helm, *charts[opts.Until], values, verbose, &wg, wgs)
+		for _, dep := range charts[opts.Until].Depends {
+			go mkChart(dep, *helm, *charts[dep], values, verbose, &wg, wgs)
+		}
+		wg.Add(len(charts[opts.Until].Depends) + 1)
+		return
+	}
+
+	// run full workflow
+	wg.Add(len(charts))
 	for key, chart := range charts {
 		go mkChart(key, *helm, *chart, values, verbose, &wg, wgs)
 	}
