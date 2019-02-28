@@ -9,7 +9,7 @@ import (
 	"strings"
 )
 
-func cleanToken(in string) (out string) {
+func cleanInput(in string) (out string) {
 	out = strings.Replace(in, "v2", "", -1)
 	out = strings.Trim(out, "/")
 	return
@@ -20,9 +20,9 @@ func removePattern(in, pattern string) string {
 }
 
 func dockerHash(server, repo, tag, token string) string {
-	server = cleanToken(server)
-	repo = cleanToken(repo)
-	tag = cleanToken(tag)
+	server = cleanInput(server)
+	repo = cleanInput(repo)
+	tag = cleanInput(tag)
 
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v2/%s/manifests/%s", server, repo, tag), nil)

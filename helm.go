@@ -3,7 +3,6 @@ package main
 import (
 	"bytes"
 	"fmt"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -75,7 +74,7 @@ func setupHelm() *Helm {
 func findTiller(namespace string, k8s *k8s) string {
 	pods, err := k8s.client.Core().Pods(namespace).List(metav1.ListOptions{LabelSelector: "name=tiller"})
 	if err != nil || len(pods.Items) != 1 {
-		log.Fatalln("tiller not found.")
+		panic("tiller not found")
 	}
 	return pods.Items[0].Name
 }
