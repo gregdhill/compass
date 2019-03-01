@@ -1,4 +1,4 @@
-package main
+package helm
 
 import (
 	"bytes"
@@ -11,6 +11,8 @@ import (
 	"os/exec"
 	"strings"
 	"sync"
+
+	"github.com/monax/compass/helm/docker"
 )
 
 func deleteDep(index string, deps []string) []string {
@@ -22,10 +24,12 @@ func deleteDep(index string, deps []string) []string {
 	return deps
 }
 
-func generate(name string, data, out *[]byte, values map[string]string) {
+// Generate renders the given values template
+func Generate(name string, data, out *[]byte, values map[string]string) {
 	funcMap := template.FuncMap{
-		"digest": dockerHash,
-		"remove": removePattern,
+		"getDigest": docker.GetImageHash,
+		"getAuth":   docker.GetAuthToken,
+		"readEnv":   os.Getenv,
 	}
 
 	t, err := template.New(name).Funcs(funcMap).Parse(string(*data))
@@ -84,7 +88,8 @@ func cpVals(prev map[string]string) map[string]string {
 	return values
 }
 
-func rmChart(key string, helm Helm, chart Chart, values map[string]string, verbose bool,
+// Remove deletes the chart once its dependencies have been met
+func (b *Bridge) Remove(key string, chart Chart, values map[string]string, verbose bool,
 	wg *sync.WaitGroup, deps map[string]*sync.WaitGroup) error {
 
 	defer wg.Done()
@@ -102,24 +107,25 @@ func rmChart(key string, helm Helm, chart Chart, values map[string]string, verbo
 	deps[key].Wait()
 
 	log.Printf("deleting %s\n", chart.Release)
-	return deleteChart(helm.client, chart.Release)
+	return deleteChart(b.client, chart.Release)
 }
 
-func mkChart(key string, helm Helm, chart Chart, main map[string]string, verbose bool,
+// Make creates the chart once its dependencies have been met
+func (b *Bridge) Make(key string, chart Chart, main map[string]string, verbose bool,
 	wg *sync.WaitGroup, deps map[string]*sync.WaitGroup) error {
 
 	defer wg.Done()
 	defer func() { deps[key].Done() }()
 
-	_, err := releaseStatus(helm.client, chart.Release)
+	_, err := releaseStatus(b.client, chart.Release)
 	if err == nil && chart.Abandon {
 		return errors.New("chart already installed")
 	}
 
 	values := cpVals(main)
-	mergeVals(values, loadVals(chart.Values, nil))
-	mergeVals(values, map[string]string{"namespace": chart.Namespace})
-	mergeVals(values, map[string]string{"release": chart.Release})
+	MergeVals(values, LoadVals(chart.Values, nil))
+	MergeVals(values, map[string]string{"namespace": chart.Namespace})
+	MergeVals(values, map[string]string{"release": chart.Release})
 
 	err = checkRequires(values, chart.Requires)
 	if err != nil {
@@ -139,21 +145,21 @@ func mkChart(key string, helm Helm, chart Chart, main map[string]string, verbose
 		if read != nil {
 			panic(read)
 		}
-		generate(temp, &data, &out, values)
+		Generate(temp, &data, &out, values)
 	}
 
 	if verbose {
 		fmt.Println(string(out))
 	}
 
-	status, err := releaseStatus(helm.client, chart.Release)
+	status, err := releaseStatus(b.client, chart.Release)
 	if status == "PENDING_INSTALL" || err != nil {
 		if err == nil {
 			log.Printf("deleting release: %s\n", chart.Release)
-			deleteChart(helm.client, chart.Release)
+			deleteChart(b.client, chart.Release)
 		}
 		log.Printf("installing release: %s\n", chart.Release)
-		err := installChart(helm.client, helm.envset, chart, out)
+		err := installChart(b.client, b.envset, chart, out)
 		if err != nil {
 			log.Fatalf("failed to install %s : %s\n", chart.Release, err)
 		}
@@ -162,7 +168,7 @@ func mkChart(key string, helm Helm, chart Chart, main map[string]string, verbose
 	}
 
 	log.Printf("upgrading release: %s\n", chart.Release)
-	upgradeChart(helm.client, helm.envset, chart, out)
+	upgradeChart(b.client, b.envset, chart, out)
 	if err != nil {
 		log.Fatalf("failed to install %s : %s\n", chart.Release, err)
 	}

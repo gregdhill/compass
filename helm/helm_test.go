@@ -1,4 +1,4 @@
-package main
+package helm
 
 import (
 	"os"
@@ -16,8 +16,8 @@ import (
 	"k8s.io/helm/pkg/helm/helmpath"
 )
 
-func newTestHelm() *Helm {
-	hc := Helm{}
+func newTestHelm() *Bridge {
+	hc := Bridge{}
 	var client helm.FakeClient
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")

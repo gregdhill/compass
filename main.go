@@ -11,37 +11,9 @@ import (
 	"sync"
 
 	flags "github.com/jessevdk/go-flags"
+	"github.com/monax/compass/helm"
 	yaml "gopkg.in/yaml.v2"
 )
-
-// Jobs represent any bash jobs that should be run as part of a release.
-type Jobs struct {
-	Before []string `yaml:"before"`
-	After  []string `yaml:"after"`
-}
-
-// Chart represents a single stage of the deployment pipeline.
-type Chart struct {
-	Name      string   `yaml:"name"`      // name of chart
-	Repo      string   `yaml:"repo"`      // chart repo
-	Version   string   `yaml:"version"`   // chart version
-	Release   string   `yaml:"release"`   // release name
-	Timeout   int64    `yaml:"timeout"`   // install / upgrade wait time
-	Namespace string   `yaml:"namespace"` // namespace
-	Abandon   bool     `yaml:"abandon"`   // install only
-	Values    string   `yaml:"values"`    // chart specific values
-	Requires  []string `yaml:"requires"`  // env requirements
-	Depends   []string `yaml:"depends"`   // dependencies
-	Jobs      Jobs     `yaml:"jobs"`      // bash jobs
-	Templates []string `yaml:"templates"` // templates
-}
-
-// Pipeline represents the complete workflow.
-type Pipeline struct {
-	Derive string            `yaml:"derive"`
-	Charts map[string]*Chart `yaml:"charts"`
-	Values map[string]string `yaml:"values"`
-}
 
 func setField(name, chart, target, offset string, values map[string]string, empty bool) (field string) {
 	fields := [3]string{
@@ -55,7 +27,7 @@ func setField(name, chart, target, offset string, values map[string]string, empt
 			if chart != "" {
 				field = fmt.Sprintf("%s-%s", field, chart)
 			}
-			mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): field})
+			helm.MergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): field})
 			return
 		}
 	}
@@ -64,11 +36,11 @@ func setField(name, chart, target, offset string, values map[string]string, empt
 		panic(fmt.Sprintf("%s chart not given %s", name, offset))
 	}
 
-	mergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): target})
+	helm.MergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): target})
 	return
 }
 
-func lint(p *Pipeline, values map[string]string, root string) {
+func lint(p *helm.Pipeline, values map[string]string, root string) {
 	for n, c := range p.Charts {
 		c.Namespace = setField(n, "", c.Namespace, "namespace", values, false)
 		c.Release = setField(n, c.Name, c.Release, "release", values, false)
@@ -94,9 +66,8 @@ func preRender(tpl string, values map[string]string) map[string]string {
 		log.Fatalf("couldn't read from %s\n", tpl)
 	}
 	var out []byte
-	generate(tpl, &data, &out, values)
-	mergeVals(values, loadVals(tpl, out))
-
+	helm.Generate(tpl, &data, &out, values)
+	helm.MergeVals(values, helm.LoadVals(tpl, out))
 	return values
 }
 
@@ -108,56 +79,19 @@ func postRender(values map[string]string) {
 	fmt.Println(string(valOut))
 }
 
-func loadVals(vals string, data []byte) map[string]string {
-	if vals == "" {
-		return nil
-	}
-
-	if data == nil {
-		data = loadFile(vals)
-	}
-
-	values := make(map[string]string)
-	err := yaml.Unmarshal([]byte(data), &values)
-	if err != nil {
-		log.Printf("error unmarshalling from %s: %v\n", vals, err)
-		return nil
-	}
-
-	return values
-}
-
-func loadFile(vals string) []byte {
-	if vals == "" {
-		return nil
-	}
-
-	data, err := ioutil.ReadFile(vals)
-	if err != nil {
-		log.Printf("error reading from %s: %v\n", vals, err)
-		return nil
-	}
-
-	return data
-}
-
-func mergeVals(prev map[string]string, next map[string]string) {
-	for key, value := range next {
-		prev[key] = value
-	}
-}
-
 func main() {
 
 	var opts struct {
 		Args struct {
 			Scroll string `description:"YAML pipeline file."`
 		} `positional-args:"yes" required:"yes"`
-		Destroy bool   `short:"d" long:"destroy" description:"Purge all releases, top-down"`
-		Export  bool   `short:"e" long:"export" description:"Render JSON marshalled values"`
-		Import  string `short:"i" long:"import" description:"YAML file with key:value mappings"`
-		Verbose bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
-		Until   string `short:"u" long:"until" description:"Deploy chart and dependencies"`
+		Destroy    bool   `short:"d" long:"destroy" description:"Purge all releases, top-down"`
+		Export     bool   `short:"e" long:"export" description:"Render JSON marshalled values"`
+		Import     string `short:"i" long:"import" description:"YAML file with key:value mappings"`
+		TillerName string `short:"n" long:"namespace" description:"Namespace to search for Tiller" default:"kube-system"`
+		TillerPort string `short:"p" long:"port" description:"Port to connect to Tiller" default:"44134"`
+		Verbose    bool   `short:"v" long:"verbose" description:"Show verbose debug information"`
+		Until      string `short:"u" long:"until" description:"Deploy chart and dependencies"`
 	}
 
 	_, err := flags.Parse(&opts)
@@ -166,7 +100,7 @@ func main() {
 	}
 
 	pipeline := opts.Args.Scroll
-	p := Pipeline{}
+	p := helm.Pipeline{}
 	data, err := ioutil.ReadFile(pipeline)
 	if err != nil {
 		log.Fatal(err)
@@ -183,8 +117,8 @@ func main() {
 	}
 
 	values := make(map[string]string, len(p.Values))
-	mergeVals(values, p.Values)
-	mergeVals(values, loadVals(opts.Import, nil))
+	helm.MergeVals(values, p.Values)
+	helm.MergeVals(values, helm.LoadVals(opts.Import, nil))
 	preRender(p.Derive, values)
 	lint(&p, values, dir)
 
@@ -194,8 +128,8 @@ func main() {
 	}
 
 	verbose := opts.Verbose
-	helm := setupHelm()
-	defer close(helm.tiller)
+	client := helm.Setup(opts.TillerName, opts.TillerPort)
+	defer client.Close()
 
 	charts := p.Charts
 	if len(charts) == 0 {
@@ -223,7 +157,7 @@ func main() {
 		}
 
 		for key, chart := range charts {
-			go rmChart(key, *helm, *chart, values, verbose, &wg, wgs)
+			go client.Remove(key, *chart, values, verbose, &wg, wgs)
 		}
 		return
 	}
@@ -240,9 +174,9 @@ func main() {
 		if _, ok := charts[opts.Until]; !ok {
 			log.Fatalf("%s does not exist", opts.Until)
 		}
-		go mkChart(opts.Until, *helm, *charts[opts.Until], values, verbose, &wg, wgs)
+		go client.Make(opts.Until, *charts[opts.Until], values, verbose, &wg, wgs)
 		for _, dep := range charts[opts.Until].Depends {
-			go mkChart(dep, *helm, *charts[dep], values, verbose, &wg, wgs)
+			go client.Make(dep, *charts[dep], values, verbose, &wg, wgs)
 		}
 		wg.Add(len(charts[opts.Until].Depends) + 1)
 		return
@@ -251,6 +185,6 @@ func main() {
 	// run full workflow
 	wg.Add(len(charts))
 	for key, chart := range charts {
-		go mkChart(key, *helm, *chart, values, verbose, &wg, wgs)
+		go client.Make(key, *chart, values, verbose, &wg, wgs)
 	}
 }

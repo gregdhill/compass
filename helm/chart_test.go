@@ -1,4 +1,4 @@
-package main
+package helm
 
 import (
 	"sync"
@@ -53,7 +53,7 @@ func TestNewChart(t *testing.T) {
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := mkChart("test", *hc, c, values, false, &wg, wgs)
+	err := hc.Make("test", c, values, false, &wg, wgs)
 	assert.NoError(t, err)
 }
 
@@ -75,6 +75,6 @@ func TestNoNewChart(t *testing.T) {
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := mkChart("test", *hc, c, values, false, &wg, wgs)
+	err := hc.Make("test", c, values, false, &wg, wgs)
 	assert.EqualError(t, err, "chart already installed")
 }

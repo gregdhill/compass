@@ -3,22 +3,16 @@ package main
 import (
 	"testing"
 
+	"github.com/monax/compass/helm"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestMergeVals(t *testing.T) {
-	prev := map[string]string{"test": "test"}
-	next := map[string]string{"test": "test"}
-	mergeVals(prev, next)
-	assert.Equal(t, 1, len(prev))
-}
-
 func TestLinter(t *testing.T) {
-	c := Chart{
+	c := helm.Chart{
 		Name: "test",
 	}
-	cs := map[string]*Chart{"Test": &c}
-	p := Pipeline{
+	cs := map[string]*helm.Chart{"Test": &c}
+	p := helm.Pipeline{
 		Charts: cs,
 	}
 	assert.Panics(t, func() { lint(&p, nil, "") })

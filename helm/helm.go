@@ -1,4 +1,4 @@
-package main
+package helm
 
 import (
 	"bytes"
@@ -24,16 +24,13 @@ import (
 	"k8s.io/helm/pkg/helm/helmpath"
 )
 
-const remotePort = "44133"
-const localPort = "44134"
-
 type k8s struct {
 	client kubernetes.Interface
 	config *rest.Config
 }
 
 func newK8s() *k8s {
-	// Fetch in-cluster config, if err try local.
+	// Fetch in-cluster config, if err try local
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
@@ -52,23 +49,29 @@ func newK8s() *k8s {
 	return &k
 }
 
-// Helm represents a new helm client and connection to Tiller.
-type Helm struct {
+// Bridge represents a helm client and open conn to tiller
+type Bridge struct {
 	client helm.Interface
 	envset helm_env.EnvSettings
 	tiller chan struct{}
 }
 
-func setupHelm() *Helm {
-	tillerTunnelAddress := fmt.Sprintf("localhost:%s", localPort)
+// Setup creates a new connection to tiller
+func Setup(namespace, port string) *Bridge {
+	tillerTunnelAddress := fmt.Sprintf("localhost:%s", port)
 	hc := helm.NewClient(helm.Host(tillerTunnelAddress))
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
-	return &Helm{
+	return &Bridge{
 		client: hc,
 		envset: settings,
-		tiller: forwardTiller(),
+		tiller: forwardTiller(namespace, port),
 	}
+}
+
+// Close gracefully exits the connection to tiller
+func (b *Bridge) Close() {
+	close(b.tiller)
 }
 
 func findTiller(namespace string, k8s *k8s) string {
@@ -79,14 +82,14 @@ func findTiller(namespace string, k8s *k8s) string {
 	return pods.Items[0].Name
 }
 
-func forwardTiller() chan struct{} {
+func forwardTiller(namespace, port string) chan struct{} {
 	k8s := newK8s()
 	roundTripper, upgrader, err := spdy.RoundTripperFor(k8s.config)
 	if err != nil {
 		panic(err)
 	}
 
-	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", "kube-system", findTiller("kube-system", k8s))
+	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", "kube-system", findTiller(namespace, k8s))
 	hostIP := strings.TrimLeft(k8s.config.Host, "https://")
 	serverURL := url.URL{Scheme: "https", Path: path, Host: hostIP}
 
@@ -95,7 +98,8 @@ func forwardTiller() chan struct{} {
 	stopChan, readyChan := make(chan struct{}, 1), make(chan struct{}, 1)
 	out, errOut := new(bytes.Buffer), new(bytes.Buffer)
 
-	forwarder, err := portforward.New(dialer, []string{localPort, remotePort}, stopChan, readyChan, out, errOut)
+	// ports = local, remote
+	forwarder, err := portforward.New(dialer, []string{port}, stopChan, readyChan, out, errOut)
 	if err != nil {
 		panic(err)
 	}
