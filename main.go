@@ -57,30 +57,7 @@ func lint(p *helm.Pipeline, values map[string]string, root string) {
 	}
 }
 
-func preRender(tpl string, values map[string]string) map[string]string {
-	if tpl == "" {
-		return values
-	}
-	data, err := ioutil.ReadFile(tpl)
-	if err != nil {
-		log.Fatalf("couldn't read from %s\n", tpl)
-	}
-	var out []byte
-	helm.Generate(tpl, &data, &out, values)
-	helm.MergeVals(values, helm.LoadVals(tpl, out))
-	return values
-}
-
-func postRender(values map[string]string) {
-	valOut, err := json.Marshal(values)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println(string(valOut))
-}
-
 func main() {
-
 	var opts struct {
 		Args struct {
 			Scroll string `description:"YAML pipeline file."`
@@ -119,11 +96,15 @@ func main() {
 	values := make(map[string]string, len(p.Values))
 	helm.MergeVals(values, p.Values)
 	helm.MergeVals(values, helm.LoadVals(opts.Import, nil))
-	preRender(p.Derive, values)
+	helm.Extrapolate(p.Derive, values)
 	lint(&p, values, dir)
 
 	if opts.Export {
-		postRender(values)
+		valOut, err := json.Marshal(values)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println(string(valOut))
 		return
 	}
 
@@ -136,55 +117,53 @@ func main() {
 		log.Fatalln("no charts specified")
 	}
 
-	wgs := make(map[string]*sync.WaitGroup, len(charts))
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
 	// reverse workflow: helm del --purge
 	if opts.Destroy {
 		wg.Add(len(charts))
-		deps := make(map[string]int, len(charts))
-		for _, chart := range charts {
-			for _, d := range chart.Depends {
-				deps[d]++
-			}
-		}
-
-		for key := range charts {
-			var w sync.WaitGroup
-			w.Add(deps[key])
-			wgs[key] = &w
-		}
+		d := p.BuildDepends(true)
 
 		for key, chart := range charts {
-			go client.Remove(key, *chart, values, verbose, &wg, wgs)
+			go func(chart *helm.Chart, key string) {
+				defer wg.Done()
+				chart.Remove(client, key, values, verbose, d)
+			}(chart, key)
 		}
 		return
 	}
 
-	for key := range charts {
-		// chart dependencies wait on this
-		var w sync.WaitGroup
-		w.Add(1)
-		wgs[key] = &w
-	}
+	d := p.BuildDepends(false)
 
 	// stop at desired chart
 	if opts.Until != "" {
+		wg.Add(len(charts[opts.Until].Depends) + 1)
 		if _, ok := charts[opts.Until]; !ok {
 			log.Fatalf("%s does not exist", opts.Until)
 		}
-		go client.Make(opts.Until, *charts[opts.Until], values, verbose, &wg, wgs)
+
+		go func(chart *helm.Chart, key string) {
+			defer wg.Done()
+			chart.Make(client, key, values, verbose, d)
+		}(charts[opts.Until], opts.Until)
+
 		for _, dep := range charts[opts.Until].Depends {
-			go client.Make(dep, *charts[dep], values, verbose, &wg, wgs)
+			go func(chart *helm.Chart, key string) {
+				defer wg.Done()
+				chart.Make(client, key, values, verbose, d)
+			}(charts[dep], dep)
 		}
-		wg.Add(len(charts[opts.Until].Depends) + 1)
+
 		return
 	}
 
 	// run full workflow
 	wg.Add(len(charts))
 	for key, chart := range charts {
-		go client.Make(key, *chart, values, verbose, &wg, wgs)
+		go func(chart *helm.Chart, key string) {
+			defer wg.Done()
+			chart.Make(client, key, values, verbose, d)
+		}(chart, key)
 	}
 }

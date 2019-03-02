@@ -3,6 +3,7 @@ package helm
 import (
 	"io/ioutil"
 	"log"
+	"sync"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -34,6 +35,48 @@ type Pipeline struct {
 	Derive string            `yaml:"derive"`
 	Charts map[string]*Chart `yaml:"charts"`
 	Values map[string]string `yaml:"values"`
+}
+
+// BuildDepends generates a dependency map
+func (p Pipeline) BuildDepends(reverse bool) *Depends {
+	charts := p.Charts
+	wgs := make(Depends, len(charts))
+
+	if reverse {
+		deps := make(map[string]int, len(charts))
+		for _, chart := range charts {
+			for _, d := range chart.Depends {
+				deps[d]++
+			}
+		}
+		for key := range charts {
+			var w sync.WaitGroup
+			w.Add(deps[key])
+			wgs[key] = &w
+		}
+		return &wgs
+	}
+
+	for key := range charts {
+		var w sync.WaitGroup
+		w.Add(1)
+		wgs[key] = &w
+	}
+	return &wgs
+}
+
+type Depends map[string]*sync.WaitGroup
+
+func (d Depends) Wait(charts ...string) {
+	for _, key := range charts {
+		d[key].Wait()
+	}
+}
+
+func (d Depends) Complete(charts ...string) {
+	for _, key := range charts {
+		d[key].Done()
+	}
 }
 
 func LoadVals(vals string, data []byte) map[string]string {

@@ -10,26 +10,21 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"sync"
 
 	"github.com/monax/compass/helm/docker"
+	"github.com/monax/compass/helm/kube"
 )
-
-func deleteDep(index string, deps []string) []string {
-	for i, j := range deps {
-		if j == index {
-			deps = append(deps[:i], deps[i+1:]...)
-		}
-	}
-	return deps
-}
 
 // Generate renders the given values template
 func Generate(name string, data, out *[]byte, values map[string]string) {
+	k8s := kube.NewK8s()
+
 	funcMap := template.FuncMap{
-		"getDigest": docker.GetImageHash,
-		"getAuth":   docker.GetAuthToken,
-		"readEnv":   os.Getenv,
+		"readEnv":       os.Getenv,
+		"getDigest":     docker.GetImageHash,
+		"getAuth":       docker.GetAuthToken,
+		"fromConfigMap": k8s.FromConfigMap,
+		"parseJSON":     kube.ParseJSON,
 	}
 
 	t, err := template.New(name).Funcs(funcMap).Parse(string(*data))
@@ -43,6 +38,20 @@ func Generate(name string, data, out *[]byte, values map[string]string) {
 		log.Fatalf("failed to render %s : %s\n", name, err)
 	}
 	*out = append(*out, buf.Bytes()...)
+}
+
+func Extrapolate(tpl string, values map[string]string) map[string]string {
+	if tpl == "" {
+		return values
+	}
+	data, err := ioutil.ReadFile(tpl)
+	if err != nil {
+		log.Fatalf("couldn't read from %s\n", tpl)
+	}
+	var out []byte
+	Generate(tpl, &data, &out, values)
+	MergeVals(values, LoadVals(tpl, out))
+	return values
 }
 
 func shellVars(vals map[string]string) []string {
@@ -89,35 +98,24 @@ func cpVals(prev map[string]string) map[string]string {
 }
 
 // Remove deletes the chart once its dependencies have been met
-func (b *Bridge) Remove(key string, chart Chart, values map[string]string, verbose bool,
-	wg *sync.WaitGroup, deps map[string]*sync.WaitGroup) error {
-
-	defer wg.Done()
-	defer func() {
-		for _, d := range chart.Depends {
-			deps[d].Done()
-		}
-	}()
+func (chart *Chart) Remove(helm *Bridge, key string, values map[string]string, verbose bool, deps *Depends) error {
+	defer deps.Complete(chart.Depends...)
 
 	err := checkRequires(values, chart.Requires)
 	if err != nil {
 		return err
 	}
 
-	deps[key].Wait()
-
+	deps.Wait(key)
 	log.Printf("deleting %s\n", chart.Release)
-	return deleteChart(b.client, chart.Release)
+	return deleteChart(helm.client, chart.Release)
 }
 
 // Make creates the chart once its dependencies have been met
-func (b *Bridge) Make(key string, chart Chart, main map[string]string, verbose bool,
-	wg *sync.WaitGroup, deps map[string]*sync.WaitGroup) error {
+func (chart *Chart) Make(helm *Bridge, key string, main map[string]string, verbose bool, deps *Depends) error {
+	defer deps.Complete(key)
 
-	defer wg.Done()
-	defer func() { deps[key].Done() }()
-
-	_, err := releaseStatus(b.client, chart.Release)
+	_, err := releaseStatus(helm.client, chart.Release)
 	if err == nil && chart.Abandon {
 		return errors.New("chart already installed")
 	}
@@ -132,9 +130,7 @@ func (b *Bridge) Make(key string, chart Chart, main map[string]string, verbose b
 		return err
 	}
 
-	for _, dep := range chart.Depends {
-		deps[dep].Wait()
-	}
+	deps.Wait(chart.Depends...)
 
 	shellJobs(shellVars(values), chart.Jobs.Before, verbose)
 	defer shellJobs(shellVars(values), chart.Jobs.After, verbose)
@@ -152,14 +148,14 @@ func (b *Bridge) Make(key string, chart Chart, main map[string]string, verbose b
 		fmt.Println(string(out))
 	}
 
-	status, err := releaseStatus(b.client, chart.Release)
+	status, err := releaseStatus(helm.client, chart.Release)
 	if status == "PENDING_INSTALL" || err != nil {
 		if err == nil {
 			log.Printf("deleting release: %s\n", chart.Release)
-			deleteChart(b.client, chart.Release)
+			deleteChart(helm.client, chart.Release)
 		}
 		log.Printf("installing release: %s\n", chart.Release)
-		err := installChart(b.client, b.envset, chart, out)
+		err := installChart(helm.client, helm.envset, *chart, out)
 		if err != nil {
 			log.Fatalf("failed to install %s : %s\n", chart.Release, err)
 		}
@@ -168,7 +164,7 @@ func (b *Bridge) Make(key string, chart Chart, main map[string]string, verbose b
 	}
 
 	log.Printf("upgrading release: %s\n", chart.Release)
-	upgradeChart(b.client, b.envset, chart, out)
+	upgradeChart(helm.client, helm.envset, *chart, out)
 	if err != nil {
 		log.Fatalf("failed to install %s : %s\n", chart.Release, err)
 	}

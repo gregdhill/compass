@@ -18,12 +18,6 @@ func newTestChart() Chart {
 	return c
 }
 
-func TestDeleteDep(t *testing.T) {
-	deps := []string{"dep1", "dep2"}
-	actual := deleteDep("dep2", deps)
-	assert.Equal(t, 1, len(actual))
-}
-
 func TestShellVars(t *testing.T) {
 	vals := map[string]string{"dep1": "dep2"}
 	actual := shellVars(vals)
@@ -44,16 +38,13 @@ func TestNewChart(t *testing.T) {
 	hc := newTestHelm()
 	c := newTestChart()
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	wgs := make(map[string]*sync.WaitGroup, 1)
+	wgs := make(Depends, 1)
 	var w sync.WaitGroup
 	w.Add(1)
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := hc.Make("test", c, values, false, &wg, wgs)
+	err := c.Make(hc, "test", values, false, &wgs)
 	assert.NoError(t, err)
 }
 
@@ -66,15 +57,12 @@ func TestNoNewChart(t *testing.T) {
 	out, _ := releaseStatus(hc.client, c.Release)
 	assert.Equal(t, "DEPLOYED", out)
 
-	var wg sync.WaitGroup
-	wg.Add(1)
-
-	wgs := make(map[string]*sync.WaitGroup, 1)
+	wgs := make(Depends, 1)
 	var w sync.WaitGroup
 	w.Add(1)
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := hc.Make("test", c, values, false, &wg, wgs)
+	err := c.Make(hc, "test", values, false, &wgs)
 	assert.EqualError(t, err, "chart already installed")
 }

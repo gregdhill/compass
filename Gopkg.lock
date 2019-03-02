@@ -300,6 +300,17 @@
   revision = "363ebb24d041ccea8068222281c2e963e997b9dc"
 
 [[projects]]
+  digest = "1:35a609636092b0ddbf6d5a2d250c67a0476202ca8ebb0bb4d338b3744a522870"
+  name = "github.com/valyala/fastjson"
+  packages = [
+    ".",
+    "fastfloat",
+  ]
+  pruneopts = "UT"
+  revision = "ecda198f5d2b8600b6af67635a6b2bf6708e5a71"
+  version = "v1.4.0"
+
+[[projects]]
   digest = "1:5f935075bb0ece334b144f2bd92e2ad17d5bc3408777686056909936951e917d"
   name = "golang.org/x/crypto"
   packages = [
@@ -722,6 +733,7 @@
   input-imports = [
     "github.com/jessevdk/go-flags",
     "github.com/stretchr/testify/assert",
+    "github.com/valyala/fastjson",
     "gopkg.in/yaml.v2",
     "k8s.io/api/core/v1",
     "k8s.io/apimachinery/pkg/apis/meta/v1",
