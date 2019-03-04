@@ -7,15 +7,26 @@ Inspired by [bashful](https://github.com/wagoodman/bashful), compass is a declar
 ## Features
 
 - [x] Stack Creation / Destruction
+- [x] Environment Specific Values
 - [x] Chart Dependencies & Variable Requirements
 - [x] Install & Forget Chart
-- [x] Fetch Docker Digest By Tag
+- [x] Only Install Chart & Dependencies
 - [x] Pre/Post-Deployment Bash Jobs
 - [x] Explicit or Global Values (Namespace, Release, Version)
-- [x] Derive Values From Extra Init Template
+- [x] Extrapolate from Initial Template
 - [x] Output JSON Values
 
+### Rendering
+
+- [x] Authenticate w/ Docker API
+- [x] Fetch Docker Digest By Tag
+- [x] Get ConfigMap or Secret Data
+- [x] Read Environment Variables
+- [x] Parse JSON Dynamically
+
 ## Installation
+
+You'll need Go (version >= 1.11) [installed and correctly setup](https://golang.org/doc/install) first.
 
 ```bash
 go get github.com/monax/compass
@@ -32,8 +43,8 @@ values:
   imageTag: "latest"
 
 charts:
-  test:
-  - release: my-release
+  first:
+    release: my-release
     namespace: default
     repo: stable
     name: chart
@@ -77,13 +88,13 @@ values:
 
 charts:
   test1:
-  - release: my-release-1
+    release: my-release-1
     namespace: default
     repo: stable
     name: chart_one
     template: values1.yaml
   test2:
-  - release: my-release-2
+    release: my-release-2
     namespace: default
     repo: stable
     name: chart_two
