@@ -24,6 +24,7 @@ func Generate(name string, data, out *[]byte, values map[string]string) {
 		"getDigest":     docker.GetImageHash,
 		"getAuth":       docker.GetAuthToken,
 		"fromConfigMap": k8s.FromConfigMap,
+		"fromSecret":    k8s.FromSecret,
 		"parseJSON":     kube.ParseJSON,
 	}
 

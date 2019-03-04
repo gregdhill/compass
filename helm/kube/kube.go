@@ -86,16 +86,24 @@ func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
 	return stopChan
 }
 
-func (k8s *K8s) FromConfigMap(name, namespace, file string) (result string, err error) {
+func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err error) {
 	cm, err := k8s.client.Core().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
 	if cm == nil {
 		return result, errors.New("failed to get configmap")
 	}
-	return cm.Data[file], nil
+	return cm.Data[key], nil
 }
 
-func ParseJSON(file string, keys ...string) (result string, err error) {
-	result = fastjson.GetString([]byte(file), keys...)
+func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err error) {
+	sec, err := k8s.client.Core().Secrets(namespace).Get(name, metav1.GetOptions{})
+	if sec == nil {
+		return result, errors.New("failed to get secret")
+	}
+	return string(sec.Data[key]), nil
+}
+
+func ParseJSON(item string, keys ...string) (result string, err error) {
+	result = fastjson.GetString([]byte(item), keys...)
 	if result == "" {
 		err = errors.New("failed to find pattern in json")
 	}
