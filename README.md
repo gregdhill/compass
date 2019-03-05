@@ -42,7 +42,7 @@ values:
   imageRepo: "docker/image"
   imageTag: "latest"
 
-charts:
+stages:
   first:
     release: my-release
     namespace: default
@@ -86,7 +86,7 @@ values:
   imageTag: "latest"
   environment: "production"
 
-charts:
+stages:
   test1:
     release: my-release-1
     namespace: default
