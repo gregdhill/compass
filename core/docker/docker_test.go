@@ -1,31 +1,43 @@
 package docker
 
 import (
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDockerHash(t *testing.T) {
-	url := "'https://auth.docker.io/token?service=registry.docker.io&scope=repository:hyperledger/burrow:pull'"
-	url = cleanInput(url)
-	resp, err := http.Get(url)
-	assert.NoError(t, err)
-	body, err := ioutil.ReadAll(resp.Body)
-	defer resp.Body.Close()
-	assert.NoError(t, err)
-	jsonToken := make(map[string]interface{})
-	err = json.Unmarshal(body, &jsonToken)
-	assert.NoError(t, err)
+const (
+	testURL = "https://auth.docker.io/token?service=registry.docker.io&scope=repository:hyperledger/burrow:pull"
+)
 
-	result, err := GetImageHash("https://index.docker.io", "hyperledger/burrow", "latest", jsonToken["token"].(string))
+func TestDockerAuth(t *testing.T) {
+	var failUrls = []string{
+		"www.example.com",
+		"http://www.example.com",
+		"https://www.example.com",
+	}
+
+	for _, url := range failUrls {
+		token, err := GetAuthToken(url)
+		assert.Error(t, err)
+		assert.Empty(t, token)
+	}
+
+	token, err := GetAuthToken(testURL)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+}
+
+func TestDockerHash(t *testing.T) {
+	token, err := GetAuthToken(testURL)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, token)
+
+	result, err := GetImageHash("https://index.docker.io", "hyperledger/burrow", "latest", token)
 	assert.NoError(t, err)
 	assert.NotEmpty(t, result)
 
-	auth, err := GetAuthToken(url)
+	auth, err := GetAuthToken(testURL)
 	assert.NoError(t, err)
 	result, err = GetImageHash("https://index.docker.io", "hyperledger/burrow", "latest", auth)
 	assert.NoError(t, err)

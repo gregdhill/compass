@@ -11,7 +11,8 @@ import (
 	"sync"
 
 	flags "github.com/jessevdk/go-flags"
-	"github.com/monax/compass/helm"
+	"github.com/monax/compass/core"
+	"github.com/monax/compass/core/helm"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -27,7 +28,7 @@ func setField(name, chart, target, offset string, values map[string]string, empt
 			if chart != "" {
 				field = fmt.Sprintf("%s-%s", field, chart)
 			}
-			helm.MergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): field})
+			core.MergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): field})
 			return
 		}
 	}
@@ -36,12 +37,12 @@ func setField(name, chart, target, offset string, values map[string]string, empt
 		panic(fmt.Sprintf("%s chart not given %s", name, offset))
 	}
 
-	helm.MergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): target})
+	core.MergeVals(values, map[string]string{fmt.Sprintf("%s_%s", name, offset): target})
 	return
 }
 
-func lint(p *helm.Pipeline, values map[string]string, root string) {
-	for n, c := range p.Charts {
+func lint(p *core.Pipeline, values map[string]string, root string) {
+	for n, c := range p.Stages {
 		c.Namespace = setField(n, "", c.Namespace, "namespace", values, false)
 		c.Release = setField(n, c.Name, c.Release, "release", values, false)
 		c.Version = setField(n, "", c.Version, "version", values, true)
@@ -77,7 +78,7 @@ func main() {
 	}
 
 	pipeline := opts.Args.Scroll
-	p := helm.Pipeline{}
+	p := core.Pipeline{}
 	data, err := ioutil.ReadFile(pipeline)
 	if err != nil {
 		log.Fatal(err)
@@ -94,9 +95,9 @@ func main() {
 	}
 
 	values := make(map[string]string, len(p.Values))
-	helm.MergeVals(values, p.Values)
-	helm.MergeVals(values, helm.LoadVals(opts.Import, nil))
-	helm.Extrapolate(p.Derive, values)
+	core.MergeVals(values, p.Values)
+	core.MergeVals(values, core.LoadVals(opts.Import, nil))
+	core.Extrapolate(p.Derive, values)
 	lint(&p, values, dir)
 
 	if opts.Export {
@@ -112,8 +113,8 @@ func main() {
 	client := helm.Setup(opts.TillerName, opts.TillerPort)
 	defer client.Close()
 
-	charts := p.Charts
-	if len(charts) == 0 {
+	stages := p.Stages
+	if len(stages) == 0 {
 		log.Fatalln("no charts specified")
 	}
 
@@ -122,14 +123,14 @@ func main() {
 
 	// reverse workflow: helm del --purge
 	if opts.Destroy {
-		wg.Add(len(charts))
+		wg.Add(len(stages))
 		d := p.BuildDepends(true)
 
-		for key, chart := range charts {
-			go func(chart *helm.Chart, key string) {
+		for key, stage := range stages {
+			go func(chart *core.Stage, key string) {
 				defer wg.Done()
-				chart.Remove(client, key, values, verbose, d)
-			}(chart, key)
+				chart.Destroy(client, key, values, verbose, d)
+			}(stage, key)
 		}
 		return
 	}
@@ -138,32 +139,32 @@ func main() {
 
 	// stop at desired chart
 	if opts.Until != "" {
-		wg.Add(len(charts[opts.Until].Depends) + 1)
-		if _, ok := charts[opts.Until]; !ok {
+		wg.Add(len(stages[opts.Until].Depends) + 1)
+		if _, ok := stages[opts.Until]; !ok {
 			log.Fatalf("%s does not exist", opts.Until)
 		}
 
-		go func(chart *helm.Chart, key string) {
+		go func(stage *core.Stage, key string) {
 			defer wg.Done()
-			chart.Make(client, key, values, verbose, d)
-		}(charts[opts.Until], opts.Until)
+			stage.Create(client, key, values, verbose, d)
+		}(stages[opts.Until], opts.Until)
 
-		for _, dep := range charts[opts.Until].Depends {
-			go func(chart *helm.Chart, key string) {
+		for _, dep := range stages[opts.Until].Depends {
+			go func(stage *core.Stage, key string) {
 				defer wg.Done()
-				chart.Make(client, key, values, verbose, d)
-			}(charts[dep], dep)
+				stage.Create(client, key, values, verbose, d)
+			}(stages[dep], dep)
 		}
 
 		return
 	}
 
 	// run full workflow
-	wg.Add(len(charts))
-	for key, chart := range charts {
-		go func(chart *helm.Chart, key string) {
+	wg.Add(len(stages))
+	for key, stage := range stages {
+		go func(stage *core.Stage, key string) {
 			defer wg.Done()
-			chart.Make(client, key, values, verbose, d)
-		}(chart, key)
+			stage.Create(client, key, values, verbose, d)
+		}(stage, key)
 	}
 }

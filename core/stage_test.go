@@ -1,19 +1,23 @@
-package helm
+package core
 
 import (
 	"sync"
 	"testing"
 
+	"github.com/monax/compass/core/helm"
 	"github.com/stretchr/testify/assert"
 )
 
-func newTestChart() Chart {
-	c := Chart{
-		Name:      "burrow",
-		Repo:      "stable",
-		Version:   "",
-		Release:   "test-release",
-		Namespace: "test",
+func newTestChart() Stage {
+	c := Stage{
+		Abandon: false,
+		Chart: helm.Chart{
+			Name:      "burrow",
+			Repo:      "stable",
+			Version:   "",
+			Release:   "test-release",
+			Namespace: "test",
+		},
 	}
 	return c
 }
@@ -35,7 +39,7 @@ func TestShellJobs(t *testing.T) {
 }
 
 func TestNewChart(t *testing.T) {
-	hc := newTestHelm()
+	b := helm.NewFakeBridge()
 	c := newTestChart()
 
 	wgs := make(Depends, 1)
@@ -44,17 +48,17 @@ func TestNewChart(t *testing.T) {
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := c.Make(hc, "test", values, false, &wgs)
+	err := c.Create(b, "test", values, false, &wgs)
 	assert.NoError(t, err)
 }
 
 func TestNoNewChart(t *testing.T) {
-	hc := newTestHelm()
+	b := helm.NewFakeBridge()
 	c := newTestChart()
 	c.Abandon = true
 
-	installChart(hc.client, hc.envset, c, nil)
-	out, _ := releaseStatus(hc.client, c.Release)
+	helm.InstallChart(b, c.Chart, nil)
+	out, _ := helm.ReleaseStatus(b, c.Release)
 	assert.Equal(t, "DEPLOYED", out)
 
 	wgs := make(Depends, 1)
@@ -63,6 +67,6 @@ func TestNoNewChart(t *testing.T) {
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := c.Make(hc, "test", values, false, &wgs)
+	err := c.Create(b, "test", values, false, &wgs)
 	assert.EqualError(t, err, "chart already installed")
 }

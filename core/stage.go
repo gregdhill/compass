@@ -1,4 +1,4 @@
-package helm
+package core
 
 import (
 	"bytes"
@@ -11,9 +11,27 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/monax/compass/helm/docker"
-	"github.com/monax/compass/helm/kube"
+	"github.com/monax/compass/core/docker"
+	"github.com/monax/compass/core/helm"
+	"github.com/monax/compass/core/kube"
 )
+
+// Jobs represent any shell scripts
+type Jobs struct {
+	Before []string `yaml:"before"`
+	After  []string `yaml:"after"`
+}
+
+// Stage represents a single part of the deployment pipeline
+type Stage struct {
+	helm.Chart
+	Abandon   bool     `yaml:"abandon"`   // install only
+	Values    string   `yaml:"values"`    // chart specific values
+	Requires  []string `yaml:"requires"`  // env requirements
+	Depends   []string `yaml:"depends"`   // dependencies
+	Jobs      Jobs     `yaml:"jobs"`      // bash jobs
+	Templates []string `yaml:"templates"` // templates
+}
 
 // Generate renders the given values template
 func Generate(name string, data, out *[]byte, values map[string]string) {
@@ -98,46 +116,46 @@ func cpVals(prev map[string]string) map[string]string {
 	return values
 }
 
-// Remove deletes the chart once its dependencies have been met
-func (chart *Chart) Remove(helm *Bridge, key string, values map[string]string, verbose bool, deps *Depends) error {
-	defer deps.Complete(chart.Depends...)
+// Destroy deletes the chart once its dependencies have been met
+func (stage *Stage) Destroy(conn *helm.Bridge, key string, values map[string]string, verbose bool, deps *Depends) error {
+	defer deps.Complete(stage.Depends...)
 
-	err := checkRequires(values, chart.Requires)
+	err := checkRequires(values, stage.Requires)
 	if err != nil {
 		return err
 	}
 
 	deps.Wait(key)
-	log.Printf("deleting %s\n", chart.Release)
-	return deleteChart(helm.client, chart.Release)
+	log.Printf("deleting %s\n", stage.Release)
+	return helm.DeleteChart(conn, stage.Release)
 }
 
-// Make creates the chart once its dependencies have been met
-func (chart *Chart) Make(helm *Bridge, key string, main map[string]string, verbose bool, deps *Depends) error {
+// Create deploys the chart once its dependencies have been met
+func (stage *Stage) Create(conn *helm.Bridge, key string, main map[string]string, verbose bool, deps *Depends) error {
 	defer deps.Complete(key)
 
-	_, err := releaseStatus(helm.client, chart.Release)
-	if err == nil && chart.Abandon {
+	_, err := helm.ReleaseStatus(conn, stage.Release)
+	if err == nil && stage.Abandon {
 		return errors.New("chart already installed")
 	}
 
 	values := cpVals(main)
-	MergeVals(values, LoadVals(chart.Values, nil))
-	MergeVals(values, map[string]string{"namespace": chart.Namespace})
-	MergeVals(values, map[string]string{"release": chart.Release})
+	MergeVals(values, LoadVals(stage.Values, nil))
+	MergeVals(values, map[string]string{"namespace": stage.Namespace})
+	MergeVals(values, map[string]string{"release": stage.Release})
 
-	err = checkRequires(values, chart.Requires)
+	err = checkRequires(values, stage.Requires)
 	if err != nil {
 		return err
 	}
 
-	deps.Wait(chart.Depends...)
+	deps.Wait(stage.Depends...)
 
-	shellJobs(shellVars(values), chart.Jobs.Before, verbose)
-	defer shellJobs(shellVars(values), chart.Jobs.After, verbose)
+	shellJobs(shellVars(values), stage.Jobs.Before, verbose)
+	defer shellJobs(shellVars(values), stage.Jobs.After, verbose)
 
 	var out []byte
-	for _, temp := range chart.Templates {
+	for _, temp := range stage.Templates {
 		data, read := ioutil.ReadFile(temp)
 		if read != nil {
 			panic(read)
@@ -149,26 +167,26 @@ func (chart *Chart) Make(helm *Bridge, key string, main map[string]string, verbo
 		fmt.Println(string(out))
 	}
 
-	status, err := releaseStatus(helm.client, chart.Release)
+	status, err := helm.ReleaseStatus(conn, stage.Release)
 	if status == "PENDING_INSTALL" || err != nil {
 		if err == nil {
-			log.Printf("deleting release: %s\n", chart.Release)
-			deleteChart(helm.client, chart.Release)
+			log.Printf("deleting release: %s\n", stage.Release)
+			helm.DeleteChart(conn, stage.Release)
 		}
-		log.Printf("installing release: %s\n", chart.Release)
-		err := installChart(helm.client, helm.envset, *chart, out)
+		log.Printf("installing release: %s\n", stage.Release)
+		err := helm.InstallChart(conn, stage.Chart, out)
 		if err != nil {
-			log.Fatalf("failed to install %s : %s\n", chart.Release, err)
+			log.Fatalf("failed to install %s : %s\n", stage.Release, err)
 		}
-		log.Printf("release %s installed\n", chart.Release)
+		log.Printf("release %s installed\n", stage.Release)
 		return nil
 	}
 
-	log.Printf("upgrading release: %s\n", chart.Release)
-	upgradeChart(helm.client, helm.envset, *chart, out)
+	log.Printf("upgrading release: %s\n", stage.Release)
+	helm.UpgradeChart(conn, stage.Chart, out)
 	if err != nil {
-		log.Fatalf("failed to install %s : %s\n", chart.Release, err)
+		log.Fatalf("failed to install %s : %s\n", stage.Release, err)
 	}
-	log.Printf("release upgraded: %s\n", chart.Release)
+	log.Printf("release upgraded: %s\n", stage.Release)
 	return nil
 }

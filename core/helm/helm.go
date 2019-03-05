@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/monax/compass/helm/kube"
+	"github.com/monax/compass/core/kube"
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/downloader"
@@ -14,6 +14,15 @@ import (
 	helm_env "k8s.io/helm/pkg/helm/environment"
 	"k8s.io/helm/pkg/helm/helmpath"
 )
+
+type Chart struct {
+	Name      string
+	Repo      string
+	Version   string
+	Release   string
+	Timeout   int64
+	Namespace string
+}
 
 // Bridge represents a helm client and open conn to tiller
 type Bridge struct {
@@ -55,10 +64,10 @@ func downloadChart(location, version string, settings helm_env.EnvSettings) (str
 	return chart, err
 }
 
-func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, chart Chart, values []byte) error {
+func InstallChart(bridge *Bridge, chart Chart, values []byte) error {
 	name := fmt.Sprintf("%s/%s", chart.Repo, chart.Name)
 
-	crt, err := downloadChart(name, chart.Version, settings)
+	crt, err := downloadChart(name, chart.Version, bridge.envset)
 	if err != nil {
 		return err
 	}
@@ -69,7 +78,7 @@ func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, char
 	}
 
 	chartutil.LoadRequirements(requestedChart)
-	_, err = helmClient.InstallReleaseFromChart(
+	_, err = bridge.client.InstallReleaseFromChart(
 		requestedChart,
 		chart.Namespace,
 		helm.ReleaseName(chart.Release),
@@ -84,16 +93,16 @@ func installChart(helmClient helm.Interface, settings helm_env.EnvSettings, char
 	return nil
 }
 
-func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, chart Chart, values []byte) error {
+func UpgradeChart(bridge *Bridge, chart Chart, values []byte) error {
 	_, _ = url.ParseRequestURI(chart.Repo)
 	name := fmt.Sprintf("%s/%s", chart.Repo, chart.Name)
 
-	crt, err := downloadChart(name, chart.Version, settings)
+	crt, err := downloadChart(name, chart.Version, bridge.envset)
 	if err != nil {
 		return err
 	}
 
-	_, err = helmClient.UpdateRelease(
+	_, err = bridge.client.UpdateRelease(
 		chart.Release,
 		crt,
 		helm.UpgradeTimeout(chart.Timeout),
@@ -106,8 +115,8 @@ func upgradeChart(helmClient helm.Interface, settings helm_env.EnvSettings, char
 	return nil
 }
 
-func deleteChart(helmClient helm.Interface, release string) error {
-	_, err := helmClient.DeleteRelease(
+func DeleteChart(bridge *Bridge, release string) error {
+	_, err := bridge.client.DeleteRelease(
 		release,
 		helm.DeletePurge(true),
 		helm.DeleteDryRun(false),
@@ -115,10 +124,20 @@ func deleteChart(helmClient helm.Interface, release string) error {
 	return err
 }
 
-func releaseStatus(helmClient helm.Interface, release string) (string, error) {
-	out, err := helmClient.ReleaseStatus(release)
+func ReleaseStatus(bridge *Bridge, release string) (string, error) {
+	out, err := bridge.client.ReleaseStatus(release)
 	if err != nil {
 		return "", err
 	}
 	return out.GetInfo().Status.Code.String(), nil
+}
+
+func NewFakeBridge() *Bridge {
+	b := Bridge{}
+	var client helm.FakeClient
+	var settings helm_env.EnvSettings
+	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
+	b.client = client.Option()
+	b.envset = settings
+	return &b
 }

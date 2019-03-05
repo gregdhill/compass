@@ -45,12 +45,12 @@ func NewK8s() *K8s {
 	return &k
 }
 
-func (k8s *K8s) FindPod(name, namespace string) string {
+func (k8s *K8s) FindPod(name, namespace string) (result string, err error) {
 	pods, err := k8s.client.Core().Pods(namespace).List(metav1.ListOptions{LabelSelector: fmt.Sprintf("name=%s", name)})
-	if err != nil || len(pods.Items) != 1 {
-		panic("tiller not found")
+	if len(pods.Items) < 1 {
+		return result, errors.New("tiller not found")
 	}
-	return pods.Items[0].Name
+	return pods.Items[0].Name, err
 }
 
 func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
@@ -59,7 +59,12 @@ func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
 		panic(err)
 	}
 
-	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", "kube-system", k8s.FindPod(name, namespace))
+	tillerName, err := k8s.FindPod(name, namespace)
+	if err != nil {
+		panic(err)
+	}
+
+	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", "kube-system", tillerName)
 	hostIP := strings.TrimLeft(k8s.config.Host, "https://")
 	serverURL := url.URL{Scheme: "https", Path: path, Host: hostIP}
 
