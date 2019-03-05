@@ -20,11 +20,13 @@ import (
 	"k8s.io/client-go/transport/spdy"
 )
 
+// K8s represents a connection to Kubernetes
 type K8s struct {
 	client kubernetes.Interface
 	config *rest.Config
 }
 
+// NewK8s populates a new connection
 func NewK8s() *K8s {
 	// Fetch in-cluster config, if err try local
 	config, err := rest.InClusterConfig()
@@ -45,6 +47,7 @@ func NewK8s() *K8s {
 	return &k
 }
 
+// FindPod finds a pod based on the namespace and the name label
 func (k8s *K8s) FindPod(name, namespace string) (result string, err error) {
 	pods, err := k8s.client.Core().Pods(namespace).List(metav1.ListOptions{LabelSelector: fmt.Sprintf("name=%s", name)})
 	if len(pods.Items) < 1 {
@@ -53,6 +56,7 @@ func (k8s *K8s) FindPod(name, namespace string) (result string, err error) {
 	return pods.Items[0].Name, err
 }
 
+// ForwardPod establishes a persistent connection to a remote pod
 func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
 	roundTripper, upgrader, err := spdy.RoundTripperFor(k8s.config)
 	if err != nil {
@@ -91,6 +95,7 @@ func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
 	return stopChan
 }
 
+// FromConfigMap reads an entry from a ConfigMap
 func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err error) {
 	cm, err := k8s.client.Core().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
 	if cm == nil {
@@ -99,6 +104,7 @@ func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err e
 	return cm.Data[key], nil
 }
 
+// FromSecret reads an entry from a Secret
 func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err error) {
 	sec, err := k8s.client.Core().Secrets(namespace).Get(name, metav1.GetOptions{})
 	if sec == nil {
@@ -107,6 +113,7 @@ func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err erro
 	return string(sec.Data[key]), nil
 }
 
+// ParseJSON dynamically parses a json string
 func ParseJSON(item string, keys ...string) (result string, err error) {
 	result = fastjson.GetString([]byte(item), keys...)
 	if result == "" {

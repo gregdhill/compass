@@ -24,13 +24,13 @@ type Jobs struct {
 
 // Stage represents a single part of the deployment pipeline
 type Stage struct {
-	helm.Chart
-	Abandon   bool     `yaml:"abandon"`   // install only
-	Values    string   `yaml:"values"`    // chart specific values
-	Requires  []string `yaml:"requires"`  // env requirements
-	Depends   []string `yaml:"depends"`   // dependencies
-	Jobs      Jobs     `yaml:"jobs"`      // bash jobs
-	Templates []string `yaml:"templates"` // templates
+	helm.Chart `yaml:",inline"`
+	Abandon    bool     `yaml:"abandon"`   // install only
+	Values     string   `yaml:"values"`    // env specific values
+	Requires   []string `yaml:"requires"`  // env requirements
+	Depends    []string `yaml:"depends"`   // dependencies
+	Jobs       Jobs     `yaml:"jobs"`      // bash jobs
+	Templates  []string `yaml:"templates"` // templates
 }
 
 // Generate renders the given values template
@@ -59,6 +59,7 @@ func Generate(name string, data, out *[]byte, values map[string]string) {
 	*out = append(*out, buf.Bytes()...)
 }
 
+// Extrapolate renders a template and reads it to a map
 func Extrapolate(tpl string, values map[string]string) map[string]string {
 	if tpl == "" {
 		return values
@@ -127,14 +128,14 @@ func (stage *Stage) Destroy(conn *helm.Bridge, key string, values map[string]str
 
 	deps.Wait(key)
 	log.Printf("deleting %s\n", stage.Release)
-	return helm.DeleteChart(conn, stage.Release)
+	return conn.DeleteRelease(stage.Release)
 }
 
 // Create deploys the chart once its dependencies have been met
 func (stage *Stage) Create(conn *helm.Bridge, key string, main map[string]string, verbose bool, deps *Depends) error {
 	defer deps.Complete(key)
 
-	_, err := helm.ReleaseStatus(conn, stage.Release)
+	_, err := conn.ReleaseStatus(stage.Release)
 	if err == nil && stage.Abandon {
 		return errors.New("chart already installed")
 	}
@@ -167,14 +168,14 @@ func (stage *Stage) Create(conn *helm.Bridge, key string, main map[string]string
 		fmt.Println(string(out))
 	}
 
-	status, err := helm.ReleaseStatus(conn, stage.Release)
+	status, err := conn.ReleaseStatus(stage.Release)
 	if status == "PENDING_INSTALL" || err != nil {
 		if err == nil {
 			log.Printf("deleting release: %s\n", stage.Release)
-			helm.DeleteChart(conn, stage.Release)
+			conn.DeleteRelease(stage.Release)
 		}
 		log.Printf("installing release: %s\n", stage.Release)
-		err := helm.InstallChart(conn, stage.Chart, out)
+		err := conn.InstallChart(stage.Chart, out)
 		if err != nil {
 			log.Fatalf("failed to install %s : %s\n", stage.Release, err)
 		}
@@ -183,7 +184,7 @@ func (stage *Stage) Create(conn *helm.Bridge, key string, main map[string]string
 	}
 
 	log.Printf("upgrading release: %s\n", stage.Release)
-	helm.UpgradeChart(conn, stage.Chart, out)
+	conn.UpgradeChart(stage.Chart, out)
 	if err != nil {
 		log.Fatalf("failed to install %s : %s\n", stage.Release, err)
 	}

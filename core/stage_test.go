@@ -57,8 +57,8 @@ func TestNoNewChart(t *testing.T) {
 	c := newTestChart()
 	c.Abandon = true
 
-	helm.InstallChart(b, c.Chart, nil)
-	out, _ := helm.ReleaseStatus(b, c.Release)
+	b.InstallChart(c.Chart, nil)
+	out, _ := b.ReleaseStatus(c.Release)
 	assert.Equal(t, "DEPLOYED", out)
 
 	wgs := make(Depends, 1)

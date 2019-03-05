@@ -43,20 +43,24 @@ func (p Pipeline) BuildDepends(reverse bool) *Depends {
 	return &wgs
 }
 
+// Depends implements a mapped waitgroup for dependencies
 type Depends map[string]*sync.WaitGroup
 
+// Wait on given waitgroups
 func (d Depends) Wait(stages ...string) {
 	for _, key := range stages {
 		d[key].Wait()
 	}
 }
 
+// Complete given waitgroups
 func (d Depends) Complete(stages ...string) {
 	for _, key := range stages {
 		d[key].Done()
 	}
 }
 
+// LoadVals reads key:value mappings
 func LoadVals(vals string, data []byte) map[string]string {
 	if vals == "" {
 		return nil
@@ -76,6 +80,7 @@ func LoadVals(vals string, data []byte) map[string]string {
 	return values
 }
 
+// LoadFile reads a file
 func LoadFile(vals string) []byte {
 	if vals == "" {
 		return nil
@@ -90,6 +95,7 @@ func LoadFile(vals string) []byte {
 	return data
 }
 
+// MergeVals overwrites one map on top of another
 func MergeVals(prev map[string]string, next map[string]string) {
 	for key, value := range next {
 		prev[key] = value
