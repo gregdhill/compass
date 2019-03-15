@@ -5,7 +5,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/monax/compass/core/kube"
+	"github.com/monax/compass/kube"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/downloader"
 	"k8s.io/helm/pkg/getter"
@@ -16,12 +16,12 @@ import (
 
 // Chart comprises the helm release
 type Chart struct {
-	Name      string `yaml:"name"`      // name of chart
-	Repo      string `yaml:"repo"`      // chart repo
-	Version   string `yaml:"version"`   // chart version
-	Release   string `yaml:"release"`   // release name
-	Timeout   int64  `yaml:"timeout"`   // install / upgrade wait time
-	Namespace string `yaml:"namespace"` // namespace
+	Name       string `yaml:"name"`       // name of chart
+	Repository string `yaml:"repository"` // chart repo
+	Version    string `yaml:"version"`    // chart version
+	Release    string `yaml:"release"`    // release name
+	Timeout    int64  `yaml:"timeout"`    // install / upgrade wait time
+	Namespace  string `yaml:"namespace"`  // namespace
 }
 
 // Bridge represents a helm client and open conn to tiller
@@ -34,7 +34,7 @@ type Bridge struct {
 // Setup creates a new connection to tiller
 func Setup(namespace, port string) *Bridge {
 	tillerTunnelAddress := fmt.Sprintf("localhost:%s", port)
-	hc := helm.NewClient(helm.Host(tillerTunnelAddress))
+	hc := helm.NewClient(helm.Host(tillerTunnelAddress), helm.ConnectTimeout(60))
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
 	k8s := kube.NewK8s()
@@ -66,7 +66,7 @@ func downloadChart(location, version string, settings helm_env.EnvSettings) (str
 
 // InstallChart deploys a helm chart
 func (b *Bridge) InstallChart(chart Chart, values []byte) error {
-	name := fmt.Sprintf("%s/%s", chart.Repo, chart.Name)
+	name := fmt.Sprintf("%s/%s", chart.Repository, chart.Name)
 
 	crt, err := downloadChart(name, chart.Version, b.envset)
 	if err != nil {
@@ -96,8 +96,8 @@ func (b *Bridge) InstallChart(chart Chart, values []byte) error {
 
 // UpgradeChart tells tiller to upgrade a helm chart
 func (b *Bridge) UpgradeChart(chart Chart, values []byte) error {
-	_, _ = url.ParseRequestURI(chart.Repo)
-	name := fmt.Sprintf("%s/%s", chart.Repo, chart.Name)
+	_, _ = url.ParseRequestURI(chart.Repository)
+	name := fmt.Sprintf("%s/%s", chart.Repository, chart.Name)
 
 	crt, err := downloadChart(name, chart.Version, b.envset)
 	if err != nil {
@@ -122,6 +122,7 @@ func (b *Bridge) DeleteRelease(release string) error {
 	_, err := b.client.DeleteRelease(
 		release,
 		helm.DeletePurge(true),
+		helm.DeleteTimeout(60),
 		helm.DeleteDryRun(false),
 	)
 	return err

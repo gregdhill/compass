@@ -4,7 +4,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/monax/compass/core/helm"
+	"github.com/monax/compass/helm"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -20,12 +20,6 @@ func newTestChart() Stage {
 		},
 	}
 	return c
-}
-
-func TestShellVars(t *testing.T) {
-	vals := map[string]string{"dep1": "dep2"}
-	actual := shellVars(vals)
-	assert.Equal(t, len(vals)*2, len(actual))
 }
 
 func TestShellJobs(t *testing.T) {

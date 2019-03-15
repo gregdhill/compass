@@ -11,9 +11,9 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/monax/compass/core/docker"
-	"github.com/monax/compass/core/helm"
-	"github.com/monax/compass/core/kube"
+	"github.com/monax/compass/docker"
+	"github.com/monax/compass/helm"
+	"github.com/monax/compass/kube"
 )
 
 // Jobs represent any shell scripts
@@ -34,7 +34,7 @@ type Stage struct {
 }
 
 // Generate renders the given values template
-func Generate(name string, data, out *[]byte, values map[string]string) {
+func Generate(name string, in, out *[]byte, values Values) error {
 	k8s := kube.NewK8s()
 
 	funcMap := template.FuncMap{
@@ -46,40 +46,18 @@ func Generate(name string, data, out *[]byte, values map[string]string) {
 		"parseJSON":     kube.ParseJSON,
 	}
 
-	t, err := template.New(name).Funcs(funcMap).Parse(string(*data))
+	t, err := template.New(name).Funcs(funcMap).Parse(string(*in))
 	if err != nil {
-		log.Fatalf("failed to render %s : %s\n", name, err)
+		return fmt.Errorf("failed to render %s: %s", name, err)
 	}
 
 	buf := new(bytes.Buffer)
 	err = t.Execute(buf, values)
 	if err != nil {
-		log.Fatalf("failed to render %s : %s\n", name, err)
+		return fmt.Errorf("failed to render %s: %s", name, err)
 	}
 	*out = append(*out, buf.Bytes()...)
-}
-
-// Extrapolate renders a template and reads it to a map
-func Extrapolate(tpl string, values map[string]string) map[string]string {
-	if tpl == "" {
-		return values
-	}
-	data, err := ioutil.ReadFile(tpl)
-	if err != nil {
-		log.Fatalf("couldn't read from %s\n", tpl)
-	}
-	var out []byte
-	Generate(tpl, &data, &out, values)
-	MergeVals(values, LoadVals(tpl, out))
-	return values
-}
-
-func shellVars(vals map[string]string) []string {
-	envs := make([]string, len(vals))
-	for key, value := range vals {
-		envs = append(envs, fmt.Sprintf("%s=%s", key, value))
-	}
-	return envs
+	return nil
 }
 
 func shellJobs(values []string, jobs []string, verbose bool) error {
@@ -108,15 +86,6 @@ func checkRequires(values map[string]string, reqs []string) error {
 	return nil
 }
 
-func cpVals(prev map[string]string) map[string]string {
-	// copy values from main for individual chart
-	values := make(map[string]string, len(prev))
-	for k, v := range prev {
-		values[k] = v
-	}
-	return values
-}
-
 // Destroy deletes the chart once its dependencies have been met
 func (stage *Stage) Destroy(conn *helm.Bridge, key string, values map[string]string, verbose bool, deps *Depends) error {
 	defer deps.Complete(stage.Depends...)
@@ -132,7 +101,7 @@ func (stage *Stage) Destroy(conn *helm.Bridge, key string, values map[string]str
 }
 
 // Create deploys the chart once its dependencies have been met
-func (stage *Stage) Create(conn *helm.Bridge, key string, main map[string]string, verbose bool, deps *Depends) error {
+func (stage *Stage) Create(conn *helm.Bridge, key string, global Values, verbose bool, deps *Depends) error {
 	defer deps.Complete(key)
 
 	_, err := conn.ReleaseStatus(stage.Release)
@@ -140,20 +109,20 @@ func (stage *Stage) Create(conn *helm.Bridge, key string, main map[string]string
 		return errors.New("chart already installed")
 	}
 
-	values := cpVals(main)
-	MergeVals(values, LoadVals(stage.Values, nil))
-	MergeVals(values, map[string]string{"namespace": stage.Namespace})
-	MergeVals(values, map[string]string{"release": stage.Release})
+	local := global.Duplicate()
+	local.Render(stage.Values)
+	local.Append(map[string]string{"namespace": stage.Namespace})
+	local.Append(map[string]string{"release": stage.Release})
 
-	err = checkRequires(values, stage.Requires)
+	err = checkRequires(local, stage.Requires)
 	if err != nil {
 		return err
 	}
 
 	deps.Wait(stage.Depends...)
 
-	shellJobs(shellVars(values), stage.Jobs.Before, verbose)
-	defer shellJobs(shellVars(values), stage.Jobs.After, verbose)
+	shellJobs(local.ToSlice(), stage.Jobs.Before, verbose)
+	defer shellJobs(local.ToSlice(), stage.Jobs.After, verbose)
 
 	var out []byte
 	for _, temp := range stage.Templates {
@@ -161,7 +130,10 @@ func (stage *Stage) Create(conn *helm.Bridge, key string, main map[string]string
 		if read != nil {
 			panic(read)
 		}
-		Generate(temp, &data, &out, values)
+		err = Generate(temp, &data, &out, local)
+		if err != nil {
+			panic(err)
+		}
 	}
 
 	if verbose {

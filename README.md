@@ -46,7 +46,7 @@ stages:
   first:
     release: my-release
     namespace: default
-    repo: stable
+    repository: stable
     name: chart
     template: values.yaml
 ```
@@ -90,13 +90,13 @@ stages:
   test1:
     release: my-release-1
     namespace: default
-    repo: stable
+    repository: stable
     name: chart_one
     template: values1.yaml
   test2:
     release: my-release-2
     namespace: default
-    repo: stable
+    repository: stable
     name: chart_two
     template: values2.yaml
     depends:
@@ -111,9 +111,9 @@ stages:
 image:
   repository: {{ .imageRepo }}@sha256
 {{ if eq .environment "production" }}
-  tag: {{ digest .docker_url .imageRepo "master" "DOCKER_TOKEN" }}
+  tag: {{ getDigest .docker_url .imageRepo "master" (getAuth "docker.hub") }}
 {{ else }}
-  tag: {{ digest .docker_url .imageRepo "develop" "DOCKER_TOKEN" }}
+  tag: {{ getDigest .docker_url .imageRepo "develop" (getAuth "docker.hub") }}
 {{ end }}
 ```
 

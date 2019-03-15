@@ -55,8 +55,11 @@ func GetImageHash(server, repo, tag, token string) (digest string, err error) {
 	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", auth))
 	req.Header.Add("Accept", "application/vnd.docker.distribution.manifest.v2+json")
 	resp, err := client.Do(req)
-	if err != nil || resp.StatusCode != 200 {
+	if err != nil {
 		return digest, fmt.Errorf("failed to get digest for %s:%s : %v", repo, tag, err)
+	}
+	if resp.StatusCode != 200 {
+		return digest, fmt.Errorf("failed to get digest for %s:%s : permission denied (%d)", repo, tag, resp.StatusCode)
 	}
 
 	return strings.Split(resp.Header["Docker-Content-Digest"][0], ":")[1], nil

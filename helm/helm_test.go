@@ -56,10 +56,10 @@ func TestDeleteChart(t *testing.T) {
 func TestInstallChart(t *testing.T) {
 	b := NewFakeBridge()
 	c := Chart{
-		Name:    "burrow",
-		Repo:    "stable",
-		Version: "",
-		Release: "test-release",
+		Name:       "burrow",
+		Repository: "stable",
+		Version:    "",
+		Release:    "test-release",
 	}
 
 	b.InstallChart(c, nil)
@@ -70,10 +70,10 @@ func TestInstallChart(t *testing.T) {
 func TestUpgradeChart(t *testing.T) {
 	b := NewFakeBridge()
 	c := Chart{
-		Name:    "burrow",
-		Repo:    "stable",
-		Version: "",
-		Release: "test-release",
+		Name:       "burrow",
+		Repository: "stable",
+		Version:    "",
+		Release:    "test-release",
 	}
 
 	_, err := b.client.InstallRelease("test-chart", "test-namespace", helm.ReleaseName("test-release"))

@@ -1,8 +1,8 @@
 package core
 
 import (
+	"fmt"
 	"io/ioutil"
-	"log"
 	"sync"
 
 	yaml "gopkg.in/yaml.v2"
@@ -10,9 +10,8 @@ import (
 
 // Pipeline represents the complete workflow.
 type Pipeline struct {
-	Derive string            `yaml:"derive"`
 	Stages map[string]*Stage `yaml:"stages"`
-	Values map[string]string `yaml:"values"`
+	Values Values            `yaml:"values"`
 }
 
 // BuildDepends generates a dependency map
@@ -43,6 +42,27 @@ func (p Pipeline) BuildDepends(reverse bool) *Depends {
 	return &wgs
 }
 
+func (p *Pipeline) Lint(in Values) error {
+	for key, stage := range p.Stages {
+		stage.Namespace = in.Validate(key, "namespace", stage.Namespace)
+		if stage.Namespace == "" {
+			return fmt.Errorf("namespace for '%s' is empty", key)
+		}
+		stage.Release = in.Validate(key, "release", stage.Release)
+		if stage.Release == "" {
+			return fmt.Errorf("release for '%s' is empty", key)
+		}
+		stage.Release = fmt.Sprintf("%s-%s", stage.Release, key)
+		in[fmt.Sprintf("%s_release", key)] = stage.Release
+		stage.Version = in.Validate(key, "version", stage.Version)
+
+		if stage.Timeout == 0 {
+			stage.Timeout = 300
+		}
+	}
+	return nil
+}
+
 // Depends implements a mapped waitgroup for dependencies
 type Depends map[string]*sync.WaitGroup
 
@@ -60,44 +80,118 @@ func (d Depends) Complete(stages ...string) {
 	}
 }
 
-// LoadVals reads key:value mappings
-func LoadVals(vals string, data []byte) map[string]string {
-	if vals == "" {
+// Values represents string mappings for go variables
+type Values map[string]string
+
+// FromFile reads more key:value mappings from a file
+func (v Values) FromFile(file string) error {
+	if file == "" {
 		return nil
 	}
 
+	data, err := LoadFile(file)
+	if err != nil {
+		return err
+	}
+
+	err = v.FromBytes(data)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// FromBytes reads more key:value mappings from a byte slice
+func (v Values) FromBytes(data []byte) error {
 	if data == nil {
-		data = LoadFile(vals)
+		return nil
 	}
 
 	values := make(map[string]string)
-	err := yaml.Unmarshal([]byte(data), &values)
+	err := yaml.Unmarshal(data, &values)
 	if err != nil {
-		log.Printf("error unmarshalling from %s: %v\n", vals, err)
+		return err
+	}
+
+	v.Append(values)
+	return nil
+}
+
+// Render templates more values from the given file
+func (v Values) Render(file string) error {
+	if file == "" {
 		return nil
 	}
 
+	data, err := LoadFile(file)
+	if err != nil {
+		return err
+	}
+
+	var out []byte
+	err = Generate(file, &data, &out, v)
+	if err != nil {
+		return err
+	}
+	err = v.FromBytes(out)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+// Append overrides the current map with a new set of values
+func (v Values) Append(add map[string]string) {
+	for key, value := range add {
+		v[key] = value
+	}
+}
+
+// ToSlice converts key:value to key=value
+func (v Values) ToSlice() []string {
+	values := make([]string, len(v))
+	for key, value := range v {
+		values = append(values, fmt.Sprintf("%s=%s", key, value))
+	}
 	return values
 }
 
-// LoadFile reads a file
-func LoadFile(vals string) []byte {
-	if vals == "" {
-		return nil
+// Duplicate copies values into a new map
+func (v Values) Duplicate() Values {
+	values := make(map[string]string, len(v))
+	for key, value := range v {
+		values[key] = value
 	}
-
-	data, err := ioutil.ReadFile(vals)
-	if err != nil {
-		log.Printf("error reading from %s: %v\n", vals, err)
-		return nil
-	}
-
-	return data
+	return values
 }
 
-// MergeVals overwrites one map on top of another
-func MergeVals(prev map[string]string, next map[string]string) {
-	for key, value := range next {
-		prev[key] = value
+func (values Values) Validate(name, field, current string) string {
+	cascade := [3]string{
+		values[fmt.Sprintf("%s_%s", name, field)],
+		values[field],
+		current,
 	}
+
+	for _, opt := range cascade {
+		if opt != "" {
+			return opt
+		}
+	}
+
+	return ""
+}
+
+// LoadFile reads a file
+func LoadFile(file string) ([]byte, error) {
+	if file == "" {
+		return nil, nil
+	}
+
+	data, err := ioutil.ReadFile(file)
+	if err != nil {
+		return nil, err
+	}
+
+	return data, nil
 }
