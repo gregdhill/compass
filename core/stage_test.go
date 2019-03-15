@@ -12,11 +12,11 @@ func newTestChart() Stage {
 	c := Stage{
 		Abandon: false,
 		Chart: helm.Chart{
-			Name:      "burrow",
-			Repo:      "stable",
-			Version:   "",
-			Release:   "test-release",
-			Namespace: "test",
+			Name:       "burrow",
+			Repository: "stable",
+			Version:    "",
+			Release:    "test-release",
+			Namespace:  "test",
 		},
 	}
 	return c
@@ -28,8 +28,7 @@ func TestShellJobs(t *testing.T) {
 	shellJobs(vals, jobs, false)
 
 	jobs = []string{"commandnotfound"}
-	err := shellJobs(vals, jobs, false)
-	assert.Errorf(t, err, "exec: \"commandnotfound\": executable file not found in $PATH")
+	assert.Panics(t, func() { shellJobs(vals, jobs, false) })
 }
 
 func TestNewChart(t *testing.T) {

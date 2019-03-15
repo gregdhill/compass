@@ -169,8 +169,8 @@ func (v Values) Duplicate() Values {
 func (values Values) Validate(name, field, current string) string {
 	cascade := [3]string{
 		values[fmt.Sprintf("%s_%s", name, field)],
-		values[field],
 		current,
+		values[field],
 	}
 
 	for _, opt := range cascade {

@@ -16,15 +16,16 @@ import (
 
 var opts struct {
 	Args struct {
-		Scroll string `description:"YAML pipeline file."`
+		Scroll string `description:"YAML formatted pipeline file"`
 	} `positional-args:"yes" required:"yes"`
-	Destroy    bool     `short:"d" long:"destroy" description:"Purge all releases, top-down"`
-	Export     bool     `short:"e" long:"export" description:"Render JSON marshalled values"`
-	Import     []string `short:"i" long:"import" description:"YAML file with key:value mappings"`
-	TillerName string   `short:"n" long:"namespace" description:"Namespace to search for Tiller" default:"kube-system"`
-	TillerPort string   `short:"p" long:"port" description:"Port to connect to Tiller" default:"44134"`
-	Verbose    bool     `short:"v" long:"verbose" description:"Show verbose debug information"`
-	Until      string   `short:"u" long:"until" description:"Deploy chart and dependencies"`
+	Destroy    bool              `short:"d" long:"destroy" description:"Purge all releases, top-down"`
+	Export     bool              `short:"e" long:"export" description:"Render JSON marshalled values"`
+	Import     []string          `short:"i" long:"import" description:"YAML file with key:value mappings"`
+	TillerName string            `short:"n" long:"namespace" description:"Namespace to search for Tiller" default:"kube-system"`
+	TillerPort string            `short:"p" long:"port" description:"Port to connect to Tiller" default:"44134"`
+	Value      map[string]string `long:"value" description:"Extra values to append to the pipeline"`
+	Verbose    bool              `short:"v" long:"verbose" description:"Show verbose debug information"`
+	Until      string            `short:"u" long:"until" description:"Deploy chart and dependencies"`
 }
 
 func start(args []string) error {
@@ -47,10 +48,11 @@ func start(args []string) error {
 
 	values := core.Values(make(map[string]string, len(p.Values)))
 	values.Append(p.Values)
+	values.Append(opts.Value)
 	for _, i := range opts.Import {
 		err = values.Render(i)
 		if err != nil {
-			return err
+			return fmt.Errorf("couldn't render import %s: %v", i, err)
 		}
 	}
 	err = p.Lint(values)
@@ -61,7 +63,7 @@ func start(args []string) error {
 	if opts.Export {
 		valOut, err := json.Marshal(values)
 		if err != nil {
-			return err
+			return fmt.Errorf("couldn't marshal values: %v", err)
 		}
 		fmt.Println(string(valOut))
 		return nil
@@ -131,6 +133,6 @@ func start(args []string) error {
 func main() {
 	err := start(os.Args[1:])
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 }

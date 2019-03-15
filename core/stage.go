@@ -60,7 +60,7 @@ func Generate(name string, in, out *[]byte, values Values) error {
 	return nil
 }
 
-func shellJobs(values []string, jobs []string, verbose bool) error {
+func shellJobs(values []string, jobs []string, verbose bool) {
 	for _, command := range jobs {
 		log.Printf("running job: %s\n", command)
 		args := strings.Fields(command)
@@ -71,10 +71,9 @@ func shellJobs(values []string, jobs []string, verbose bool) error {
 			fmt.Println(string(stdout))
 		}
 		if err != nil {
-			return err
+			panic(err)
 		}
 	}
-	return nil
 }
 
 func checkRequires(values map[string]string, reqs []string) error {
@@ -111,8 +110,6 @@ func (stage *Stage) Create(conn *helm.Bridge, key string, global Values, verbose
 
 	local := global.Duplicate()
 	local.Render(stage.Values)
-	local.Append(map[string]string{"namespace": stage.Namespace})
-	local.Append(map[string]string{"release": stage.Release})
 
 	err = checkRequires(local, stage.Requires)
 	if err != nil {
