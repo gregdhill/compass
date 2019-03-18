@@ -21,7 +21,6 @@ type Chart struct {
 	Version    string `yaml:"version"`    // chart version
 	Release    string `yaml:"release"`    // release name
 	Timeout    int64  `yaml:"timeout"`    // install / upgrade wait time
-	Namespace  string `yaml:"namespace"`  // namespace
 }
 
 // Bridge represents a helm client and open conn to tiller
@@ -65,7 +64,7 @@ func downloadChart(location, version string, settings helm_env.EnvSettings) (str
 }
 
 // InstallChart deploys a helm chart
-func (b *Bridge) InstallChart(chart Chart, values []byte) error {
+func (b *Bridge) InstallChart(chart Chart, namespace string, values []byte) error {
 	name := fmt.Sprintf("%s/%s", chart.Repository, chart.Name)
 
 	crt, err := downloadChart(name, chart.Version, b.envset)
@@ -81,7 +80,7 @@ func (b *Bridge) InstallChart(chart Chart, values []byte) error {
 	chartutil.LoadRequirements(requestedChart)
 	_, err = b.client.InstallReleaseFromChart(
 		requestedChart,
-		chart.Namespace,
+		namespace,
 		helm.ReleaseName(chart.Release),
 		helm.InstallWait(true),
 		helm.InstallTimeout(chart.Timeout),

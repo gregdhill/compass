@@ -1,19 +1,15 @@
 package core
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
-	"html/template"
 	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
 
-	"github.com/monax/compass/docker"
 	"github.com/monax/compass/helm"
-	"github.com/monax/compass/kube"
 )
 
 // Jobs represent any shell scripts
@@ -25,39 +21,12 @@ type Jobs struct {
 // Stage represents a single part of the deployment pipeline
 type Stage struct {
 	helm.Chart `yaml:",inline"`
+	Namespace  string   `yaml:"namespace"` // namespace
 	Abandon    bool     `yaml:"abandon"`   // install only
-	Values     string   `yaml:"values"`    // env specific values
 	Requires   []string `yaml:"requires"`  // env requirements
 	Depends    []string `yaml:"depends"`   // dependencies
 	Jobs       Jobs     `yaml:"jobs"`      // bash jobs
 	Templates  []string `yaml:"templates"` // templates
-}
-
-// Generate renders the given values template
-func Generate(name string, in, out *[]byte, values Values) error {
-	k8s := kube.NewK8s()
-
-	funcMap := template.FuncMap{
-		"readEnv":       os.Getenv,
-		"getDigest":     docker.GetImageHash,
-		"getAuth":       docker.GetAuthToken,
-		"fromConfigMap": k8s.FromConfigMap,
-		"fromSecret":    k8s.FromSecret,
-		"parseJSON":     kube.ParseJSON,
-	}
-
-	t, err := template.New(name).Funcs(funcMap).Parse(string(*in))
-	if err != nil {
-		return fmt.Errorf("failed to render %s: %s", name, err)
-	}
-
-	buf := new(bytes.Buffer)
-	err = t.Execute(buf, values)
-	if err != nil {
-		return fmt.Errorf("failed to render %s: %s", name, err)
-	}
-	*out = append(*out, buf.Bytes()...)
-	return nil
 }
 
 func shellJobs(values []string, jobs []string, verbose bool) {
@@ -109,8 +78,6 @@ func (stage *Stage) Create(conn *helm.Bridge, key string, global Values, verbose
 	}
 
 	local := global.Duplicate()
-	local.Render(stage.Values)
-
 	err = checkRequires(local, stage.Requires)
 	if err != nil {
 		return err
@@ -144,7 +111,7 @@ func (stage *Stage) Create(conn *helm.Bridge, key string, global Values, verbose
 			conn.DeleteRelease(stage.Release)
 		}
 		log.Printf("installing release: %s\n", stage.Release)
-		err := conn.InstallChart(stage.Chart, out)
+		err := conn.InstallChart(stage.Chart, stage.Namespace, out)
 		if err != nil {
 			log.Fatalf("failed to install %s : %s\n", stage.Release, err)
 		}

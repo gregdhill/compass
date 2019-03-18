@@ -1,10 +1,15 @@
 package core
 
 import (
+	"bytes"
 	"fmt"
 	"io/ioutil"
+	"os"
 	"sync"
+	"text/template"
 
+	"github.com/monax/compass/docker"
+	"github.com/monax/compass/kube"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -52,13 +57,15 @@ func (p *Pipeline) Lint(in Values) error {
 		if stage.Release == "" {
 			return fmt.Errorf("release for '%s' is empty", key)
 		}
-		stage.Release = fmt.Sprintf("%s-%s", stage.Release, key)
-		in[fmt.Sprintf("%s_release", key)] = stage.Release
 		stage.Version = in.Validate(key, "version", stage.Version)
-
 		if stage.Timeout == 0 {
 			stage.Timeout = 300
 		}
+
+		in[fmt.Sprintf("%s_namespace", key)] = stage.Namespace
+		in[fmt.Sprintf("%s_release", key)] = stage.Release
+		in[fmt.Sprintf("%s_version", key)] = stage.Version
+		in[fmt.Sprintf("%s_timeout", key)] = string(stage.Timeout)
 	}
 	return nil
 }
@@ -194,4 +201,32 @@ func LoadFile(file string) ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// Generate renders the given values template
+func Generate(name string, in, out *[]byte, values Values) error {
+	k8s := kube.NewK8s()
+
+	funcMap := template.FuncMap{
+		"readEnv":       os.Getenv,
+		"getDigest":     docker.GetImageHash,
+		"getAuth":       docker.GetAuthToken,
+		"fromConfigMap": k8s.FromConfigMap,
+		"fromSecret":    k8s.FromSecret,
+		"parseJSON":     kube.ParseJSON,
+		"throwError":    func(msg string) (string, error) { return msg, fmt.Errorf(msg) },
+	}
+
+	t, err := template.New(name).Funcs(funcMap).Parse(string(*in))
+	if err != nil {
+		return err
+	}
+
+	buf := new(bytes.Buffer)
+	err = t.Execute(buf, values)
+	if err != nil {
+		return err
+	}
+	*out = append(*out, buf.Bytes()...)
+	return nil
 }

@@ -10,13 +10,13 @@ import (
 
 func newTestChart() Stage {
 	c := Stage{
-		Abandon: false,
+		Abandon:   false,
+		Namespace: "test",
 		Chart: helm.Chart{
 			Name:       "burrow",
 			Repository: "stable",
 			Version:    "",
 			Release:    "test-release",
-			Namespace:  "test",
 		},
 	}
 	return c
@@ -50,7 +50,7 @@ func TestNoNewChart(t *testing.T) {
 	c := newTestChart()
 	c.Abandon = true
 
-	b.InstallChart(c.Chart, nil)
+	b.InstallChart(c.Chart, c.Namespace, nil)
 	out, _ := b.ReleaseStatus(c.Release)
 	assert.Equal(t, "DEPLOYED", out)
 
