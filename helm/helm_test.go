@@ -10,6 +10,17 @@ import (
 	"k8s.io/helm/pkg/helm"
 )
 
+func newTestChart() Chart {
+	return Chart{
+		Name:       "burrow",
+		Repository: "stable",
+		Version:    "",
+		Release:    "test-release",
+		Namespace:  "test-namespace",
+		Bridge:     NewFakeBridge(),
+	}
+}
+
 func TestDownloadChart(t *testing.T) {
 	b := NewFakeBridge()
 	dl := downloader.ChartDownloader{
@@ -28,58 +39,43 @@ func TestDownloadChart(t *testing.T) {
 }
 
 func TestReleaseStatus(t *testing.T) {
-	b := NewFakeBridge()
+	c := newTestChart()
 
-	_, err := b.ReleaseStatus("test-release")
+	_, err := c.Status()
 	assert.Error(t, err, "release: \"test-release\" not found")
 
-	_, err = b.client.InstallRelease("test-chart", "test-namespace", helm.ReleaseName("test-release"))
-	assert.NoError(t, err)
-
-	_, err = b.ReleaseStatus("test-release")
+	_, err = c.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release))
 	assert.NoError(t, err)
 }
 
 func TestDeleteChart(t *testing.T) {
-	b := NewFakeBridge()
+	c := newTestChart()
 
-	err := b.DeleteRelease("test-release")
+	err := c.Delete()
 	assert.Error(t, err, "release: \"test-release\" not found")
 
-	_, err = b.client.InstallRelease("test-chart", "test-namespace", helm.ReleaseName("test-release"))
+	_, err = c.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release))
 	assert.NoError(t, err)
 
-	err = b.DeleteRelease("test-release")
+	err = c.Delete()
 	assert.NoError(t, err)
 }
 
 func TestInstallChart(t *testing.T) {
-	b := NewFakeBridge()
-	c := Chart{
-		Name:       "burrow",
-		Repository: "stable",
-		Version:    "",
-		Release:    "test-release",
-	}
-
-	b.InstallChart(c, nil)
-	out, _ := b.ReleaseStatus(c.Release)
-	assert.Equal(t, "DEPLOYED", out)
+	c := newTestChart()
+	c.Install()
+	out, _ := c.Status()
+	assert.Equal(t, true, out)
 }
 
 func TestUpgradeChart(t *testing.T) {
-	b := NewFakeBridge()
-	c := Chart{
-		Name:       "burrow",
-		Repository: "stable",
-		Version:    "",
-		Release:    "test-release",
-	}
+	c := newTestChart()
 
-	_, err := b.client.InstallRelease("test-chart", "test-namespace", helm.ReleaseName("test-release"))
+	_, err := c.Bridge.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release), helm.InstallWait(true))
 	assert.NoError(t, err)
 
-	b.UpgradeChart(c, nil)
-	out, _ := b.ReleaseStatus("test-release")
-	assert.Equal(t, "DEPLOYED", out)
+	c.Upgrade()
+	out, err := c.Status()
+	assert.NoError(t, err)
+	assert.Equal(t, true, out)
 }

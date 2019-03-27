@@ -16,10 +16,12 @@ require (
 	github.com/google/uuid v0.0.0-20161128191214-064e2069ce9c // indirect
 	github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d // indirect
 	github.com/gophercloud/gophercloud v0.0.0-20180330165814-781450b3c4fc // indirect
+	github.com/hashicorp/golang-lru v0.5.1 // indirect
 	github.com/huandu/xstrings v0.0.0-20151130125119-3959339b3335 // indirect
 	github.com/imdario/mergo v0.3.5 // indirect
 	github.com/jessevdk/go-flags v0.0.0-20181221193153-c0795c8afcf4
 	github.com/json-iterator/go v0.0.0-20180701071628-ab8a2e0c74be // indirect
+	github.com/mitchellh/mapstructure v1.1.2
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
 	github.com/onsi/ginkgo v1.7.0 // indirect

@@ -44,11 +44,12 @@ values:
 
 stages:
   first:
+    kind: helm
     release: my-release
     namespace: default
     repository: stable
     name: chart
-    template: values.yaml
+    input: values.yaml
 ```
 
 If you save that as `scroll.yaml` you'll see that another file named `values.yaml` is required, so let's go ahead and create that:
@@ -88,17 +89,19 @@ values:
 
 stages:
   test1:
+    kind: helm
     release: my-release-1
     namespace: default
     repository: stable
     name: chart_one
-    template: values1.yaml
+    input: values1.yaml
   test2:
+    kind: helm
     release: my-release-2
     namespace: default
     repository: stable
     name: chart_two
-    template: values2.yaml
+    input: values2.yaml
     depends:
     - test1
     jobs:

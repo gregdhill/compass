@@ -6,11 +6,13 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
-	"sync"
+	"os/signal"
+	"syscall"
+
+	"github.com/monax/compass/util"
 
 	flags "github.com/jessevdk/go-flags"
 	"github.com/monax/compass/core"
-	"github.com/monax/compass/helm"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -20,6 +22,7 @@ var opts struct {
 	} `positional-args:"yes" required:"yes"`
 	Destroy    bool              `short:"d" long:"destroy" description:"Purge all releases, top-down"`
 	Export     bool              `short:"e" long:"export" description:"Render JSON marshalled values"`
+	Force      bool              `short:"f" long:"force" description:"Force install / upgrade / delete"`
 	Import     []string          `short:"i" long:"import" description:"YAML file with key:value mappings"`
 	TillerName string            `short:"n" long:"namespace" description:"Namespace to search for Tiller" default:"kube-system"`
 	TillerPort string            `short:"p" long:"port" description:"Port to connect to Tiller" default:"44134"`
@@ -34,29 +37,43 @@ func start(args []string) error {
 		return err
 	}
 
-	pipeline := opts.Args.Scroll
-	p := core.Pipeline{}
-	data, err := ioutil.ReadFile(pipeline)
+	// open scroll
+	scroll := opts.Args.Scroll
+	data, err := ioutil.ReadFile(scroll)
 	if err != nil {
 		return err
 	}
 
-	err = yaml.Unmarshal([]byte(data), &p)
+	// build workflow
+	pipe := core.Pipeline{}
+	err = yaml.Unmarshal([]byte(data), &pipe)
 	if err != nil {
 		return err
 	}
 
-	values := core.Values(make(map[string]string, len(p.Values)))
-	values.Append(p.Values)
-	values.Append(opts.Value)
+	tpl, closer := pipe.Connect(opts.TillerName, opts.TillerPort)
+	defer closer()
+
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		closer()
+		os.Exit(1)
+	}()
+
+	values := util.Values(make(map[string]string, len(pipe.Values)))
+	values.Append(pipe.Values) // main values
+	values.Append(opts.Value)  // explicit cli inputs
+
+	// additional template files
 	for _, i := range opts.Import {
-		err = values.Render(i)
-		if err != nil {
-			return fmt.Errorf("couldn't render import %s: %v", i, err)
+		if err = values.FromTemplate(i, tpl); err != nil {
+			return fmt.Errorf("couldn't attach import %s: %v", i, err)
 		}
 	}
-	err = p.Lint(values)
-	if err != nil {
+
+	if err = pipe.Lint(values); err != nil {
 		return err
 	}
 
@@ -69,64 +86,27 @@ func start(args []string) error {
 		return nil
 	}
 
+	force := opts.Force
 	verbose := opts.Verbose
-	client := helm.Setup(opts.TillerName, opts.TillerPort)
-	defer client.Close()
-
-	stages := p.Stages
+	stages := pipe.Stages
 	if len(stages) == 0 {
 		return fmt.Errorf("no charts specified")
 	}
 
-	var wg sync.WaitGroup
-	defer wg.Wait()
-
-	// reverse workflow: helm del --purge
+	// reverse workflow
 	if opts.Destroy {
-		wg.Add(len(stages))
-		d := p.BuildDepends(true)
-
-		for key, stage := range stages {
-			go func(chart *core.Stage, key string) {
-				defer wg.Done()
-				chart.Destroy(client, key, values, verbose, d)
-			}(stage, key)
-		}
+		pipe.Destroy(values, force, verbose)
 		return nil
 	}
 
-	d := p.BuildDepends(false)
-
-	// stop at desired chart
+	// stop at desired key
 	if opts.Until != "" {
-		wg.Add(len(stages[opts.Until].Depends) + 1)
-		if _, ok := stages[opts.Until]; !ok {
-			log.Fatalf("%s does not exist", opts.Until)
-		}
-
-		go func(stage *core.Stage, key string) {
-			defer wg.Done()
-			stage.Create(client, key, values, verbose, d)
-		}(stages[opts.Until], opts.Until)
-
-		for _, dep := range stages[opts.Until].Depends {
-			go func(stage *core.Stage, key string) {
-				defer wg.Done()
-				stage.Create(client, key, values, verbose, d)
-			}(stages[dep], dep)
-		}
-
+		pipe.Until(values, force, verbose, opts.Until)
 		return nil
 	}
 
 	// run full workflow
-	wg.Add(len(stages))
-	for key, stage := range stages {
-		go func(stage *core.Stage, key string) {
-			defer wg.Done()
-			stage.Create(client, key, values, verbose, d)
-		}(stage, key)
-	}
+	pipe.Create(values, force, verbose)
 	return nil
 }
 
