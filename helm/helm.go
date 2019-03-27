@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/monax/compass/kube"
+	"github.com/monax/compass/util"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/downloader"
 	"k8s.io/helm/pkg/getter"
@@ -13,15 +14,6 @@ import (
 	helm_env "k8s.io/helm/pkg/helm/environment"
 	"k8s.io/helm/pkg/helm/helmpath"
 )
-
-// Chart comprises the helm release
-type Chart struct {
-	Name       string `yaml:"name"`       // name of chart
-	Repository string `yaml:"repository"` // chart repo
-	Version    string `yaml:"version"`    // chart version
-	Release    string `yaml:"release"`    // release name
-	Timeout    int64  `yaml:"timeout"`    // install / upgrade wait time
-}
 
 // Bridge represents a helm client and open conn to tiller
 type Bridge struct {
@@ -31,12 +23,11 @@ type Bridge struct {
 }
 
 // Setup creates a new connection to tiller
-func Setup(namespace, port string) *Bridge {
+func Setup(k8s *kube.K8s, namespace, port string) *Bridge {
 	tillerTunnelAddress := fmt.Sprintf("localhost:%s", port)
 	hc := helm.NewClient(helm.Host(tillerTunnelAddress), helm.ConnectTimeout(60))
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
-	k8s := kube.NewK8s()
 	return &Bridge{
 		client: hc,
 		envset: settings,
@@ -47,6 +38,41 @@ func Setup(namespace, port string) *Bridge {
 // Close gracefully exits the connection to tiller
 func (b *Bridge) Close() {
 	close(b.tiller)
+}
+
+// Chart comprises the helm release
+type Chart struct {
+	Name       string `yaml:"name"`       // name of chart
+	Repository string `yaml:"repository"` // chart repository
+	Version    string `yaml:"version"`    // chart version
+	Release    string `yaml:"release"`    // release name
+	Namespace  string `yaml:"namespace"`  // namespace
+	Timeout    int64  `yaml:"timeout"`    // install / upgrade wait time
+	Object     []byte
+	*Bridge
+}
+
+// Lint validates the chart for required values
+// some of which are parsed from values
+func (c *Chart) Lint(key string, in *util.Values) error {
+	if c.Namespace = in.Cascade(key, "namespace", c.Namespace); c.Namespace == "" {
+		return fmt.Errorf("namespace for %s is empty", key)
+	}
+	if c.Release = in.Cascade(key, "release", c.Release); c.Release == "" {
+		return fmt.Errorf("namespace for %s is empty", key)
+	}
+	c.Version = in.Cascade(key, "version", c.Version)
+	return nil
+}
+
+// SetInput adds the templated values file
+func (c *Chart) SetInput(obj []byte) {
+	c.Object = obj
+}
+
+// Connect sets the established helm connection
+func (c *Chart) Connect(bridge interface{}) {
+	c.Bridge = bridge.(*Bridge)
 }
 
 func downloadChart(location, version string, settings helm_env.EnvSettings) (string, error) {
@@ -63,11 +89,11 @@ func downloadChart(location, version string, settings helm_env.EnvSettings) (str
 	return chart, err
 }
 
-// InstallChart deploys a helm chart
-func (b *Bridge) InstallChart(chart Chart, namespace string, values []byte) error {
-	name := fmt.Sprintf("%s/%s", chart.Repository, chart.Name)
+// Install deploys a helm chart
+func (c *Chart) Install() error {
+	name := fmt.Sprintf("%s/%s", c.Repository, c.Name)
 
-	crt, err := downloadChart(name, chart.Version, b.envset)
+	crt, err := downloadChart(name, c.Version, c.envset)
 	if err != nil {
 		return err
 	}
@@ -78,13 +104,13 @@ func (b *Bridge) InstallChart(chart Chart, namespace string, values []byte) erro
 	}
 
 	chartutil.LoadRequirements(requestedChart)
-	_, err = b.client.InstallReleaseFromChart(
+	_, err = c.client.InstallReleaseFromChart(
 		requestedChart,
-		namespace,
-		helm.ReleaseName(chart.Release),
+		c.Namespace,
+		helm.ReleaseName(c.Release),
 		helm.InstallWait(true),
-		helm.InstallTimeout(chart.Timeout),
-		helm.ValueOverrides(values),
+		helm.InstallTimeout(c.Timeout),
+		helm.ValueOverrides(c.Object),
 		helm.InstallDryRun(false),
 	)
 	if err != nil {
@@ -93,21 +119,21 @@ func (b *Bridge) InstallChart(chart Chart, namespace string, values []byte) erro
 	return nil
 }
 
-// UpgradeChart tells tiller to upgrade a helm chart
-func (b *Bridge) UpgradeChart(chart Chart, values []byte) error {
-	_, _ = url.ParseRequestURI(chart.Repository)
-	name := fmt.Sprintf("%s/%s", chart.Repository, chart.Name)
+// Upgrade tells tiller to upgrade a helm chart
+func (c *Chart) Upgrade() error {
+	_, _ = url.ParseRequestURI(c.Repository)
+	name := fmt.Sprintf("%s/%s", c.Repository, c.Name)
 
-	crt, err := downloadChart(name, chart.Version, b.envset)
+	crt, err := downloadChart(name, c.Version, c.envset)
 	if err != nil {
 		return err
 	}
 
-	_, err = b.client.UpdateRelease(
-		chart.Release,
+	_, err = c.client.UpdateRelease(
+		c.Release,
 		crt,
-		helm.UpgradeTimeout(chart.Timeout),
-		helm.UpdateValueOverrides(values),
+		helm.UpgradeTimeout(c.Timeout),
+		helm.UpdateValueOverrides(c.Object),
 		helm.UpgradeDryRun(false),
 	)
 	if err != nil {
@@ -116,10 +142,10 @@ func (b *Bridge) UpgradeChart(chart Chart, values []byte) error {
 	return nil
 }
 
-// DeleteRelease tells tiller to destroy a release
-func (b *Bridge) DeleteRelease(release string) error {
-	_, err := b.client.DeleteRelease(
-		release,
+// Delete tells tiller to destroy a release
+func (c *Chart) Delete() error {
+	_, err := c.client.DeleteRelease(
+		c.Release,
 		helm.DeletePurge(true),
 		helm.DeleteTimeout(60),
 		helm.DeleteDryRun(false),
@@ -127,13 +153,17 @@ func (b *Bridge) DeleteRelease(release string) error {
 	return err
 }
 
-// ReleaseStatus returns the status of a release
-func (b *Bridge) ReleaseStatus(release string) (string, error) {
-	out, err := b.client.ReleaseStatus(release)
-	if err != nil {
-		return "", err
+// Status returns the status of a release
+func (c *Chart) Status() (bool, error) {
+	out, err := c.client.ReleaseStatus(c.Release)
+	if err != nil || out == nil {
+		return false, err
 	}
-	return out.GetInfo().Status.Code.String(), nil
+	statusCode := out.GetInfo().Status.Code.String()
+	if statusCode == "PENDING_INSTALL" {
+		c.Delete()
+	}
+	return true, nil
 }
 
 // NewFakeBridge establishes a fake helm client

@@ -1,15 +1,16 @@
 package core
 
 import (
-	"errors"
 	"fmt"
-	"io/ioutil"
 	"log"
 	"os"
 	"os/exec"
 	"strings"
 
+	"github.com/mitchellh/mapstructure"
 	"github.com/monax/compass/helm"
+	"github.com/monax/compass/kube"
+	"github.com/monax/compass/util"
 )
 
 // Jobs represent any shell scripts
@@ -20,13 +21,55 @@ type Jobs struct {
 
 // Stage represents a single part of the deployment pipeline
 type Stage struct {
-	helm.Chart `yaml:",inline"`
-	Namespace  string   `yaml:"namespace"` // namespace
-	Abandon    bool     `yaml:"abandon"`   // install only
-	Requires   []string `yaml:"requires"`  // env requirements
-	Depends    []string `yaml:"depends"`   // dependencies
-	Jobs       Jobs     `yaml:"jobs"`      // bash jobs
-	Templates  []string `yaml:"templates"` // templates
+	Abandon  bool     `yaml:"abandon"`  // install only
+	Depends  []string `yaml:"depends"`  // dependencies
+	Input    string   `yaml:"input"`    // template file
+	Jobs     Jobs     `yaml:"jobs"`     // bash jobs
+	Kind     string   `yaml:"kind"`     // type of deploy
+	Requires []string `yaml:"requires"` // env requirements
+	Render   func(string, util.Values) ([]byte, error)
+	Resource
+}
+
+// UnmarshalYAML allows us to determine the type of our resource
+func (stg *Stage) UnmarshalYAML(unmarshal func(interface{}) error) error {
+	this := make(map[string]interface{}, 0)
+	if err := unmarshal(&this); err != nil {
+		return err
+	}
+	mapstructure.Decode(this, stg)
+
+	switch this["kind"] {
+	case "kube", "kubernetes":
+		var km kube.Manifest
+		km.Timeout = 300
+		mapstructure.Decode(this, &km)
+		stg.Resource = &km
+	case "helm":
+		var hc helm.Chart
+		hc.Timeout = 300
+		mapstructure.Decode(this, &hc)
+		stg.Resource = &hc
+	default:
+		return fmt.Errorf("kind '%s' unknown", this["kind"])
+	}
+
+	stg.Render = func(string, util.Values) ([]byte, error) {
+		return nil, nil
+	}
+
+	return nil
+}
+
+// Resource is the thing to be created / destroyed
+type Resource interface {
+	Lint(string, *util.Values) error
+	Status() (bool, error)
+	Install() error
+	Upgrade() error
+	Delete() error
+	Connect(interface{})
+	SetInput([]byte)
 }
 
 func shellJobs(values []string, jobs []string, verbose bool) {
@@ -40,90 +83,101 @@ func shellJobs(values []string, jobs []string, verbose bool) {
 			fmt.Println(string(stdout))
 		}
 		if err != nil {
-			panic(err)
+			panic(fmt.Errorf("job '%s' exited with error: %v", command, err))
 		}
 	}
 }
 
-func checkRequires(values map[string]string, reqs []string) error {
+func checkRequires(values map[string]string, reqs []string) string {
 	for _, r := range reqs {
 		if _, exists := values[r]; !exists {
-			return errors.New("requirement not met")
+			return r
 		}
 	}
-	return nil
+	return ""
 }
 
-// Destroy deletes the chart once its dependencies have been met
-func (stage *Stage) Destroy(conn *helm.Bridge, key string, values map[string]string, verbose bool, deps *Depends) error {
-	defer deps.Complete(stage.Depends...)
+// Destroy deletes the instance once its dependencies have been met
+func (stg *Stage) Destroy(key string, global util.Values, deps *Depends, force, verbose bool) error {
+	defer deps.Complete(stg.Depends...) // signal its dependencies once finished
 
-	err := checkRequires(values, stage.Requires)
-	if err != nil {
-		return err
-	}
-
-	deps.Wait(key)
-	log.Printf("deleting %s\n", stage.Release)
-	return conn.DeleteRelease(stage.Release)
-}
-
-// Create deploys the chart once its dependencies have been met
-func (stage *Stage) Create(conn *helm.Bridge, key string, global Values, verbose bool, deps *Depends) error {
-	defer deps.Complete(key)
-
-	_, err := conn.ReleaseStatus(stage.Release)
-	if err == nil && stage.Abandon {
-		return errors.New("chart already installed")
-	}
-
-	local := global.Duplicate()
-	err = checkRequires(local, stage.Requires)
-	if err != nil {
-		return err
-	}
-
-	deps.Wait(stage.Depends...)
-
-	shellJobs(local.ToSlice(), stage.Jobs.Before, verbose)
-	defer shellJobs(local.ToSlice(), stage.Jobs.After, verbose)
-
-	var out []byte
-	for _, temp := range stage.Templates {
-		data, read := ioutil.ReadFile(temp)
-		if read != nil {
-			panic(read)
-		}
-		err = Generate(temp, &data, &out, local)
-		if err != nil {
-			panic(err)
-		}
-	}
-
-	if verbose {
-		fmt.Println(string(out))
-	}
-
-	status, err := conn.ReleaseStatus(stage.Release)
-	if status == "PENDING_INSTALL" || err != nil {
-		if err == nil {
-			log.Printf("deleting release: %s\n", stage.Release)
-			conn.DeleteRelease(stage.Release)
-		}
-		log.Printf("installing release: %s\n", stage.Release)
-		err := conn.InstallChart(stage.Chart, stage.Namespace, out)
-		if err != nil {
-			log.Fatalf("failed to install %s : %s\n", stage.Release, err)
-		}
-		log.Printf("release %s installed\n", stage.Release)
+	// only continue if required variables are set
+	if req := checkRequires(global, stg.Requires); req != "" {
+		log.Printf("[%s] ignoring: %s, requirement '%s' not met\n", stg.Kind, key, req)
 		return nil
 	}
 
-	log.Printf("upgrading release: %s\n", stage.Release)
-	conn.UpgradeChart(stage.Chart, out)
-	if err != nil {
-		log.Fatalf("failed to install %s : %s\n", stage.Release, err)
+	// don't delete by default
+	if !force && stg.Abandon {
+		log.Printf("[%s] ignoring: %s\n", stg.Kind, key)
+		return fmt.Errorf("[%s] not deleting stage %s", stg.Kind, key)
 	}
-	log.Printf("release upgraded: %s\n", stage.Release)
+
+	// wait for dependants to delete first
+	deps.Wait(key)
+	log.Printf("[%s] deleting: %s\n", stg.Kind, key)
+
+	out, err := stg.Render(stg.Input, global)
+	if err != nil {
+		panic(err)
+	} else if out != nil {
+		stg.SetInput(out)
+	}
+
+	return stg.Delete()
+}
+
+// Create deploys the instance once its dependencies have been met
+func (stg *Stage) Create(key string, global util.Values, deps *Depends, force, verbose bool) error {
+	defer deps.Complete(key) // signal dependants once finished
+
+	// stop if already installed and abandoned
+	installed, _ := stg.Status()
+	if installed && !force && stg.Abandon {
+		log.Printf("[%s] ignoring: %s\n", stg.Kind, key)
+		return nil
+	}
+
+	local := global.Duplicate()
+	shellVars := local.ToSlice()
+	if req := checkRequires(local, stg.Requires); req != "" {
+		log.Printf("[%s] ignoring: %s, requirement '%s' not met\n", stg.Kind, key, req)
+		return nil
+	}
+
+	// wait for dependencies
+	deps.Wait(stg.Depends...)
+
+	shellJobs(shellVars, stg.Jobs.Before, verbose)
+	defer shellJobs(shellVars, stg.Jobs.After, verbose)
+
+	out, err := stg.Render(stg.Input, global)
+	if err != nil {
+		panic(err)
+	} else if out != nil {
+		stg.SetInput(out)
+		if verbose {
+			fmt.Println(string(out))
+		}
+	}
+
+	installed, err = stg.Status()
+	if !installed {
+		log.Printf("[%s] installing: %s\n", stg.Kind, key)
+		if err := stg.Install(); err != nil {
+			log.Fatalf("[%s] failed to install %s: %s\n", stg.Kind, key, err)
+			return err
+		}
+		log.Printf("[%s] installed: %s\n", stg.Kind, key)
+		return nil
+	}
+
+	// upgrade if already installed
+	log.Printf("[%s] upgrading: %s\n", stg.Kind, key)
+	if err = stg.Upgrade(); err != nil {
+		log.Fatalf("[%s] failed to upgrade %s: %s\n", stg.Kind, key, err)
+		return err
+	}
+	log.Printf("[%s] upgraded: %s\n", stg.Kind, key)
 	return nil
 }

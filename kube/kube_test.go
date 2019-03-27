@@ -6,25 +6,28 @@ import (
 	"github.com/stretchr/testify/assert"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes/fake"
 )
 
-func newTestK8s() *K8s {
-	k := K8s{}
-	k.client = fake.NewSimpleClientset()
-	return &k
+func TestCreateNamespace(t *testing.T) {
+	k8s := NewFakeK8s()
+	err := k8s.CreateNamespace("test")
+	assert.NoError(t, err)
+	ns, err := k8s.client.Core().Namespaces().Get("test", metav1.GetOptions{})
+	assert.NoError(t, err)
+	assert.NotNil(t, ns)
 }
 
-func createFakeNamespace(k8s *K8s, name string) error {
-	n := &v1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: "kube-system"}}
-	_, err := k8s.client.Core().Namespaces().Create(n)
-	return err
+func newTestManifest() Manifest {
+	return Manifest{
+		Namespace: "test-namespace",
+		K8s:       NewFakeK8s(),
+	}
 }
 
 func TestFromConfigMap(t *testing.T) {
-	k8s := newTestK8s()
+	k8s := NewFakeK8s()
 	namespace := "kube-system"
-	err := createFakeNamespace(k8s, namespace)
+	err := k8s.CreateNamespace(namespace)
 	assert.NoError(t, err)
 
 	testData := map[string]string{"test": "data"}
@@ -42,9 +45,9 @@ func TestFromConfigMap(t *testing.T) {
 }
 
 func TestFromSecret(t *testing.T) {
-	k8s := newTestK8s()
+	k8s := NewFakeK8s()
 	namespace := "kube-system"
-	err := createFakeNamespace(k8s, namespace)
+	err := k8s.CreateNamespace(namespace)
 	assert.NoError(t, err)
 
 	testData := map[string][]byte{"test": []byte("data")}
@@ -62,13 +65,13 @@ func TestFromSecret(t *testing.T) {
 }
 
 func TestFindTiller(t *testing.T) {
-	k8s := newTestK8s()
+	k8s := NewFakeK8s()
 
 	pod, err := k8s.FindPod("tiller", "kube-system")
 	assert.Errorf(t, err, "tiller not found")
 
 	namespace := "kube-system"
-	err = createFakeNamespace(k8s, namespace)
+	err = k8s.CreateNamespace(namespace)
 	assert.NoError(t, err)
 
 	p := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "tiller-test", Labels: map[string]string{"name": "tiller"}}}
@@ -79,4 +82,26 @@ func TestFindTiller(t *testing.T) {
 
 	pod, err = k8s.FindPod("tiller", namespace)
 	assert.Equal(t, "tiller-test", pod)
+}
+
+var testData = `
+apiVersion: v1
+kind: Secret
+data:
+  test: "data"
+metadata:
+  creationTimestamp: null
+  name: secret-data
+type: Opaque
+`
+
+func TestCreate(t *testing.T) {
+	m := newTestManifest()
+
+	err := m.K8s.CreateNamespace(m.Namespace)
+	assert.NoError(t, err)
+
+	m.SetInput([]byte(testData))
+	err = m.Install()
+	assert.NoError(t, err)
 }
