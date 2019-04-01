@@ -121,13 +121,13 @@ func (pl *Pipeline) Destroy(input util.Values, force, verbose bool) {
 	for key, stage := range stages {
 		go func(stg *Stage, key string) {
 			defer wg.Done()
-			stg.Destroy(key, input, d, force, verbose)
+			stg.Backward(key, input, d, force, verbose)
 		}(stage, key)
 	}
 }
 
-// Create processes each stage in the pipeline
-func (pl *Pipeline) Create(input util.Values, force, verbose bool) {
+// Run processes each stage in the pipeline
+func (pl *Pipeline) Run(input util.Values, force, verbose bool) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -138,7 +138,7 @@ func (pl *Pipeline) Create(input util.Values, force, verbose bool) {
 	for key, stage := range stages {
 		go func(stage *Stage, key string) {
 			defer wg.Done()
-			stage.Create(key, input, d, force, verbose)
+			stage.Forward(key, input, d, force, verbose)
 		}(stage, key)
 	}
 }
@@ -158,13 +158,13 @@ func (pl *Pipeline) Until(input util.Values, force, verbose bool, target string)
 	wg.Add(len(stages[target].Depends) + 1)
 	go func(stage *Stage, key string) {
 		defer wg.Done()
-		stage.Create(key, input, d, force, verbose)
+		stage.Forward(key, input, d, force, verbose)
 	}(stages[target], target)
 
 	for _, dep := range stages[target].Depends {
 		go func(stage *Stage, key string) {
 			defer wg.Done()
-			stage.Create(key, input, d, force, verbose)
+			stage.Forward(key, input, d, force, verbose)
 		}(stages[dep], dep)
 	}
 }

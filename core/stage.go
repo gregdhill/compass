@@ -21,12 +21,14 @@ type Jobs struct {
 
 // Stage represents a single part of the deployment pipeline
 type Stage struct {
-	Abandon  bool     `yaml:"abandon"`  // install only
-	Depends  []string `yaml:"depends"`  // dependencies
-	Input    string   `yaml:"input"`    // template file
-	Jobs     Jobs     `yaml:"jobs"`     // bash jobs
-	Kind     string   `yaml:"kind"`     // type of deploy
-	Requires []string `yaml:"requires"` // env requirements
+	Abandon  bool        `yaml:"abandon"`  // install only
+	Depends  []string    `yaml:"depends"`  // dependencies
+	Input    string      `yaml:"input"`    // template file
+	Jobs     Jobs        `yaml:"jobs"`     // bash jobs
+	Kind     string      `yaml:"kind"`     // type of deploy
+	Requires []string    `yaml:"requires"` // env requirements
+	Remove   bool        `yaml:"remove"`   // delete instead
+	Values   util.Values `yaml:"values"`   // additional values
 	Render   func(string, util.Values) ([]byte, error)
 	Resource
 }
@@ -64,7 +66,7 @@ func (stg *Stage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // Resource is the thing to be created / destroyed
 type Resource interface {
 	Lint(string, *util.Values) error
-	Status() (bool, error)
+	Status() bool
 	Install() error
 	Upgrade() error
 	Delete() error
@@ -97,8 +99,8 @@ func checkRequires(values map[string]string, reqs []string) string {
 	return ""
 }
 
-// Destroy deletes the instance once its dependencies have been met
-func (stg *Stage) Destroy(key string, global util.Values, deps *Depends, force, verbose bool) error {
+// Backward pass over the graph
+func (stg *Stage) Backward(key string, global util.Values, deps *Depends, force, verbose bool) error {
 	defer deps.Complete(stg.Depends...) // signal its dependencies once finished
 
 	// only continue if required variables are set
@@ -127,9 +129,9 @@ func (stg *Stage) Destroy(key string, global util.Values, deps *Depends, force, 
 	return stg.Delete()
 }
 
-// Create deploys the instance once its dependencies have been met
-func (stg *Stage) Create(key string, global util.Values, deps *Depends, force, verbose bool) error {
-	defer deps.Complete(key) // signal dependants once finished
+// Forward pass over the graph
+func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, verbose bool) error {
+	defer deps.Complete(key) // signal this finished
 
 	// stop if already installed and abandoned
 	installed, _ := stg.Status()
@@ -139,6 +141,7 @@ func (stg *Stage) Create(key string, global util.Values, deps *Depends, force, v
 	}
 
 	local := global.Duplicate()
+	local.Append(stg.Values)
 	shellVars := local.ToSlice()
 	if req := checkRequires(local, stg.Requires); req != "" {
 		log.Printf("[%s] ignoring: %s, requirement '%s' not met\n", stg.Kind, key, req)
@@ -159,6 +162,10 @@ func (stg *Stage) Create(key string, global util.Values, deps *Depends, force, v
 		if verbose {
 			fmt.Println(string(out))
 		}
+	}
+
+	if stg.Remove {
+		return stg.Delete()
 	}
 
 	installed, err = stg.Status()

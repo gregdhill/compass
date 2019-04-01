@@ -79,10 +79,10 @@ func TestCreateDestroyChart(t *testing.T) {
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := chart.Create("test", values, &wgs, false, false)
+	err := chart.Forward("test", values, &wgs, false, false)
 	assert.NoError(t, err)
 
-	err = chart.Destroy("test", values, &wgs, false, false)
+	err = chart.Backward("test", values, &wgs, false, false)
 	assert.NoError(t, err)
 }
 
@@ -95,9 +95,9 @@ func TestCreateDestroyManifest(t *testing.T) {
 	wgs["test"] = &w
 
 	values := make(map[string]string, 1)
-	err := man.Create("test", values, &wgs, false, false)
+	err := man.Forward("test", values, &wgs, false, false)
 	assert.NoError(t, err)
 
-	err = man.Destroy("test", values, &wgs, false, false)
+	err = man.Backward("test", values, &wgs, false, false)
 	assert.NoError(t, err)
 }

@@ -17,13 +17,6 @@ func TestCreateNamespace(t *testing.T) {
 	assert.NotNil(t, ns)
 }
 
-func newTestManifest() Manifest {
-	return Manifest{
-		Namespace: "test-namespace",
-		K8s:       NewFakeK8s(),
-	}
-}
-
 func TestFromConfigMap(t *testing.T) {
 	k8s := NewFakeK8s()
 	namespace := "kube-system"
@@ -80,28 +73,6 @@ func TestFindTiller(t *testing.T) {
 		t.Errorf("Error injecting pod into fake client: %v", err)
 	}
 
-	pod, err = k8s.FindPod("tiller", namespace)
+	pod, err = k8s.FindPod(namespace, "name=tiller")
 	assert.Equal(t, "tiller-test", pod)
-}
-
-var testData = `
-apiVersion: v1
-kind: Secret
-data:
-  test: "data"
-metadata:
-  creationTimestamp: null
-  name: secret-data
-type: Opaque
-`
-
-func TestCreate(t *testing.T) {
-	m := newTestManifest()
-
-	err := m.K8s.CreateNamespace(m.Namespace)
-	assert.NoError(t, err)
-
-	m.SetInput([]byte(testData))
-	err = m.Install()
-	assert.NoError(t, err)
 }

@@ -9,10 +9,9 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/monax/compass/util"
-
 	flags "github.com/jessevdk/go-flags"
 	"github.com/monax/compass/core"
+	"github.com/monax/compass/util"
 	yaml "gopkg.in/yaml.v2"
 )
 
@@ -106,7 +105,7 @@ func start(args []string) error {
 	}
 
 	// run full workflow
-	pipe.Create(values, force, verbose)
+	pipe.Run(values, force, verbose)
 	return nil
 }
 
