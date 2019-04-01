@@ -66,7 +66,7 @@ func (stg *Stage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 // Resource is the thing to be created / destroyed
 type Resource interface {
 	Lint(string, *util.Values) error
-	Status() bool
+	Status() (bool, error)
 	Install() error
 	Upgrade() error
 	Delete() error
