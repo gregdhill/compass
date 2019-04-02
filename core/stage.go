@@ -29,8 +29,8 @@ type Stage struct {
 	Requires []string    `yaml:"requires"` // env requirements
 	Remove   bool        `yaml:"remove"`   // delete instead
 	Values   util.Values `yaml:"values"`   // additional values
-	Render   func(string, util.Values) ([]byte, error)
 	Resource
+	*kube.K8s
 }
 
 // UnmarshalYAML allows us to determine the type of our resource
@@ -54,10 +54,6 @@ func (stg *Stage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 		stg.Resource = &hc
 	default:
 		return fmt.Errorf("kind '%s' unknown", this["kind"])
-	}
-
-	stg.Render = func(string, util.Values) ([]byte, error) {
-		return nil, nil
 	}
 
 	return nil
@@ -119,7 +115,7 @@ func (stg *Stage) Backward(key string, global util.Values, deps *Depends, force,
 	deps.Wait(key)
 	log.Printf("[%s] deleting: %s\n", stg.Kind, key)
 
-	out, err := stg.Render(stg.Input, global)
+	out, err := Template(stg.Input, global, stg.K8s)
 	if err != nil {
 		log.Fatal(err)
 	} else if out != nil {
@@ -154,7 +150,7 @@ func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, 
 	shellJobs(shellVars, stg.Jobs.Before, verbose)
 	defer shellJobs(shellVars, stg.Jobs.After, verbose)
 
-	out, err := stg.Render(stg.Input, global)
+	out, err := Template(stg.Input, global, stg.K8s)
 	if err != nil {
 		log.Fatal(err)
 	} else if out != nil {

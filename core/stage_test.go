@@ -6,7 +6,6 @@ import (
 
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
-	"github.com/monax/compass/util"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -14,9 +13,6 @@ func newTestChart() *Stage {
 	return &Stage{
 		Abandon: false,
 		Kind:    "helm",
-		Render: func(name string, in util.Values) ([]byte, error) {
-			return util.Template(name, in, renderFuncs(kube.NewFakeK8s()))
-		},
 		Resource: &helm.Chart{
 			Name:       "burrow",
 			Repository: "stable",
@@ -25,6 +21,7 @@ func newTestChart() *Stage {
 			Release:    "test-release",
 			Bridge:     helm.NewFakeBridge(),
 		},
+		K8s: kube.NewFakeK8s(),
 	}
 }
 
@@ -50,9 +47,6 @@ func newTestManifest() *Stage {
 	stg := Stage{
 		Abandon: false,
 		Kind:    "kube",
-		Render: func(name string, in util.Values) ([]byte, error) {
-			return util.Template(name, in, renderFuncs(k8s))
-		},
 		Resource: &kube.Manifest{
 			Namespace: "test-namespace",
 			Object:    []byte(testJob),

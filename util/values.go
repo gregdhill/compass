@@ -1,10 +1,8 @@
 package util
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
-	"text/template"
 
 	yaml "gopkg.in/yaml.v2"
 )
@@ -32,8 +30,8 @@ func (v Values) FromFile(fileName string) error {
 }
 
 // FromTemplate reads more key:value mappings from a templated file
-func (v Values) FromTemplate(fileName string, tpl template.FuncMap) error {
-	data, err := Template(fileName, v, tpl)
+func (v Values) FromTemplate(fileName string, tpl func(string, Values) ([]byte, error)) error {
+	data, err := tpl(fileName, v)
 	if err != nil {
 		return err
 	}
@@ -102,24 +100,4 @@ func (v Values) Cascade(name, field, current string) string {
 		}
 	}
 	return ""
-}
-
-// Template reads a file and renders it according to the provided functions
-func Template(name string, input map[string]string, tpl template.FuncMap) ([]byte, error) {
-	if name == "" {
-		return nil, nil
-	}
-
-	data, err := ioutil.ReadFile(name)
-	if err != nil {
-		return nil, err
-	}
-
-	buf := new(bytes.Buffer)
-	t, err := template.New(name).Funcs(tpl).Parse(string(data))
-	if err != nil {
-		return nil, err
-	}
-	err = t.Execute(buf, input)
-	return buf.Bytes(), err
 }

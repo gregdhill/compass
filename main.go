@@ -50,7 +50,7 @@ func start(args []string) error {
 		return err
 	}
 
-	tpl, closer := pipe.Connect(opts.TillerName, opts.TillerPort)
+	k8s, closer := pipe.Connect(opts.TillerName, opts.TillerPort)
 	defer closer()
 
 	c := make(chan os.Signal)
@@ -67,7 +67,9 @@ func start(args []string) error {
 
 	// additional template files
 	for _, i := range opts.Import {
-		if err = values.FromTemplate(i, tpl); err != nil {
+		if err = values.FromTemplate(i, func(name string, input util.Values) ([]byte, error) {
+			return core.Template(name, input, k8s)
+		}); err != nil {
 			return fmt.Errorf("couldn't attach import %s: %v", i, err)
 		}
 	}

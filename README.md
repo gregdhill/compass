@@ -58,7 +58,6 @@ If you save that as `scroll.yaml` you'll see that two other files named `values.
 
 ```yaml
 # values.yaml
-
 {{ $ipfs_auth := (printf "https://auth.docker.io/token?service=registry.docker.io&scope=repository:%s:pull" .image) }}
 image: {{ printf "%s@sha256" .image }}:{{ getDigest "https://index.docker.io" .image .tag (getAuth $ipfs_auth) }}
 
@@ -98,7 +97,6 @@ There are many more pipeline options:
 
 ```yaml
 # scroll.yaml
-
 stages:
   one:
     # helm stuff

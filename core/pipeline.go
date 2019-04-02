@@ -1,6 +1,7 @@
 package core
 
 import (
+	"bytes"
 	"io/ioutil"
 	"log"
 	"os"
@@ -75,15 +76,12 @@ func (pl *Pipeline) Lint(in util.Values) (err error) {
 }
 
 // Connect links all of our stages to their required resources
-func (pl *Pipeline) Connect(tillerName, tillerPort string) (template.FuncMap, func()) {
+func (pl *Pipeline) Connect(tillerName, tillerPort string) (*kube.K8s, func()) {
 	k8s := kube.NewK8s()
 	bridge := helm.Setup(k8s, tillerName, tillerPort)
-	tpl := renderFuncs(k8s)
 
 	for _, stg := range pl.Stages {
-		stg.Render = func(name string, in util.Values) ([]byte, error) {
-			return util.Template(name, in, tpl)
-		}
+		stg.K8s = k8s
 		switch stg.Kind {
 		case "kube", "kubernetes":
 			stg.Connect(k8s)
@@ -92,13 +90,12 @@ func (pl *Pipeline) Connect(tillerName, tillerPort string) (template.FuncMap, fu
 		}
 	}
 
-	return tpl, func() {
-		bridge.Close()
-	}
+	return k8s, bridge.Close
 }
 
-func renderFuncs(k8s *kube.K8s) template.FuncMap {
-	return template.FuncMap{
+// Template reads a file and renders it according to the provided functions
+func Template(name string, input map[string]string, k8s *kube.K8s) ([]byte, error) {
+	funcs := template.FuncMap{
 		"getDigest":     docker.GetImageHash,
 		"getAuth":       docker.GetAuthToken,
 		"fromConfigMap": k8s.FromConfigMap,
@@ -110,6 +107,23 @@ func renderFuncs(k8s *kube.K8s) template.FuncMap {
 			return string(data), err
 		},
 	}
+
+	if name == "" {
+		return nil, nil
+	}
+
+	data, err := ioutil.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := new(bytes.Buffer)
+	t, err := template.New(name).Funcs(funcs).Parse(string(data))
+	if err != nil {
+		return nil, err
+	}
+	err = t.Execute(buf, input)
+	return buf.Bytes(), err
 }
 
 // Destroy deletes each stage in reverse order
