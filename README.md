@@ -10,17 +10,11 @@ A cloud native pipeline and templating tool. Simply describe how the environment
   - Install, upgrade & delete cloud resources.
   - Build a pipeline with dependencies and requirements.
   - Combine with shell scripts.
-  - Choose to forget about an object once installed.
 - Layer Go Templates
   - Inject key:value pairs through the command-line.
   - Render intermediate input templates.
   - Render final resource input.
   - Handy Go Functions
-    - Authenticate w/ Docker API
-    - Fetch Docker Digest By Tag
-    - Get ConfigMap or Secret Data
-    - Read Environment Variables
-    - Parse JSON Dynamically
 
 ## Installation
 
@@ -51,7 +45,7 @@ stages:
     name: ipfs
     input: values.yaml
 
-  put:
+  add:
     kind: kube
     depends:
     - ipfs

@@ -2,11 +2,14 @@ package helm
 
 import (
 	"fmt"
+	"log"
 	"net/url"
 	"os"
+	"strconv"
 
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
+	"github.com/phayes/freeport"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/downloader"
 	"k8s.io/helm/pkg/getter"
@@ -23,15 +26,23 @@ type Bridge struct {
 }
 
 // Setup creates a new connection to tiller
-func Setup(k8s *kube.K8s, namespace, port string) *Bridge {
-	tillerTunnelAddress := fmt.Sprintf("localhost:%s", port)
+func Setup(k8s *kube.K8s, namespace, remote string) *Bridge {
+
+	port, err := freeport.GetFreePort()
+	if err != nil {
+		log.Fatal(err)
+	}
+	local := strconv.Itoa(port)
+
+	tillerTunnelAddress := fmt.Sprintf("localhost:%s", local)
 	hc := helm.NewClient(helm.Host(tillerTunnelAddress), helm.ConnectTimeout(60))
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
+
 	return &Bridge{
 		client: hc,
 		envset: settings,
-		tiller: k8s.ForwardPod("tiller", namespace, port),
+		tiller: k8s.ForwardPod("tiller", namespace, local, remote),
 	}
 }
 

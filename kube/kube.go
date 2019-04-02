@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"net/url"
 	"os"
@@ -45,16 +46,16 @@ func NewK8s() *K8s {
 	if k8s.config, err = rest.InClusterConfig(); err != nil {
 		k8s.config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
 		if err != nil {
-			panic(err)
+			log.Fatal(err)
 		}
 	}
 
 	if k8s.typed, err = kubernetes.NewForConfig(k8s.config); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	if k8s.dynamic, err = dynamic.NewForConfig(k8s.config); err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	return &k8s
@@ -79,15 +80,15 @@ func (k8s *K8s) FindPod(namespace, label string) (result string, err error) {
 }
 
 // ForwardPod establishes a persistent connection to a remote pod
-func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
+func (k8s *K8s) ForwardPod(name, namespace, local, remote string) chan struct{} {
 	roundTripper, upgrader, err := spdy.RoundTripperFor(k8s.config)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	tillerName, err := k8s.FindPod(namespace, fmt.Sprintf("name=%s", name))
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", "kube-system", tillerName)
@@ -100,9 +101,9 @@ func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
 	out, errOut := new(bytes.Buffer), new(bytes.Buffer)
 
 	// ports = local, remote
-	forwarder, err := portforward.New(dialer, []string{port}, stopChan, readyChan, out, errOut)
+	forwarder, err := portforward.New(dialer, []string{fmt.Sprintf("%s:%s", local, remote)}, stopChan, readyChan, out, errOut)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	}
 
 	go func() {

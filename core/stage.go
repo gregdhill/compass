@@ -121,7 +121,7 @@ func (stg *Stage) Backward(key string, global util.Values, deps *Depends, force,
 
 	out, err := stg.Render(stg.Input, global)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	} else if out != nil {
 		stg.SetInput(out)
 	}
@@ -156,7 +156,7 @@ func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, 
 
 	out, err := stg.Render(stg.Input, global)
 	if err != nil {
-		panic(err)
+		log.Fatal(err)
 	} else if out != nil {
 		stg.SetInput(out)
 		if verbose {
