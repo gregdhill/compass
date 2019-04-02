@@ -12,7 +12,7 @@ func TestCreateNamespace(t *testing.T) {
 	k8s := NewFakeK8s()
 	err := k8s.CreateNamespace("test")
 	assert.NoError(t, err)
-	ns, err := k8s.client.Core().Namespaces().Get("test", metav1.GetOptions{})
+	ns, err := k8s.typed.Core().Namespaces().Get("test", metav1.GetOptions{})
 	assert.NoError(t, err)
 	assert.NotNil(t, ns)
 }
@@ -25,7 +25,7 @@ func TestFromConfigMap(t *testing.T) {
 
 	testData := map[string]string{"test": "data"}
 	c := &v1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "test-cm"}, Data: testData}
-	_, err = k8s.client.Core().ConfigMaps(namespace).Create(c)
+	_, err = k8s.typed.Core().ConfigMaps(namespace).Create(c)
 	assert.NoError(t, err)
 
 	result, err := k8s.FromConfigMap("test-cm", namespace, "test")
@@ -45,7 +45,7 @@ func TestFromSecret(t *testing.T) {
 
 	testData := map[string][]byte{"test": []byte("data")}
 	s := &v1.Secret{ObjectMeta: metav1.ObjectMeta{Name: "test-sec"}, Data: testData}
-	_, err = k8s.client.Core().Secrets(namespace).Create(s)
+	_, err = k8s.typed.Core().Secrets(namespace).Create(s)
 	assert.NoError(t, err)
 
 	result, err := k8s.FromSecret("test-sec", namespace, "test")
@@ -68,7 +68,7 @@ func TestFindTiller(t *testing.T) {
 	assert.NoError(t, err)
 
 	p := &v1.Pod{ObjectMeta: metav1.ObjectMeta{Name: "tiller-test", Labels: map[string]string{"name": "tiller"}}}
-	_, err = k8s.client.Core().Pods(namespace).Create(p)
+	_, err = k8s.typed.Core().Pods(namespace).Create(p)
 	if err != nil {
 		t.Errorf("Error injecting pod into fake client: %v", err)
 	}

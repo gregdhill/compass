@@ -1,20 +1,24 @@
 package kube
 
 import (
+	"bytes"
 	"fmt"
 
 	"github.com/monax/compass/util"
 	v1batch "k8s.io/api/batch/v1"
 	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/restmapper"
 
 	// import all auth plugins
 	_ "k8s.io/client-go/plugin/pkg/client/auth"
 )
 
-// Manifest represents a Kubernetes definition
+// Manifest represents a kubernetes definition
 type Manifest struct {
 	Namespace string `yaml:"namespace"` // namespace
 	Timeout   int64  `yaml:"timeout"`   // install / upgrade wait time
@@ -41,10 +45,18 @@ func (m *Manifest) Connect(k8s interface{}) {
 	m.K8s = k8s.(*K8s)
 }
 
-func (m *Manifest) objToSpec() (runtime.Object, error) {
+func (m *Manifest) buildObjects() ([]runtime.Object, error) {
 	decode := scheme.Codecs.UniversalDeserializer().Decode
-	spec, _, err := decode(m.Object, nil, nil)
-	return spec, err
+	objs := bytes.Split(m.Object, []byte("---"))
+	var specs []runtime.Object
+	for _, obj := range objs {
+		spec, _, err := decode(obj, nil, nil)
+		if err != nil {
+			return nil, err
+		}
+		specs = append(specs, spec)
+	}
+	return specs, nil
 }
 
 type Action string
@@ -56,170 +68,99 @@ const (
 	Delete  Action = "delete"
 )
 
-func (m *Manifest) Execute(do Action) error {
-	var err error
-	var spec runtime.Object
+// Execute performs actions against the kubernetes api
+func (m *Manifest) Execute(spec runtime.Object, do Action) error {
+	gvk := spec.GetObjectKind().GroupVersionKind()
+	gvr := schema.GroupVersionResource{Group: gvk.Group, Version: gvk.Version}
 
-	spec, err = m.objToSpec()
+	// this is empty if using the fake client
+	groupResources, err := restmapper.GetAPIGroupResources(m.K8s.typed.Discovery())
 	if err != nil {
 		return err
 	}
 
-	switch def := spec.(type) {
-
-	case *v1core.ConfigMap:
-		switch Action(do) {
-		case Install:
-			_, err = m.client.Core().ConfigMaps(m.Namespace).Create(def)
-
-		case Upgrade:
-			_, err = m.client.Core().ConfigMaps(m.Namespace).Update(def)
-
-		case Status:
-			_, err = m.client.Core().ConfigMaps(m.Namespace).Get(def.GetName(), metav1.GetOptions{})
-
-		case Delete:
-			err = m.client.Core().ConfigMaps(m.Namespace).Delete(def.GetName(), &metav1.DeleteOptions{})
-
-		default:
-			return fmt.Errorf("action type '%v' unknown", do)
+	if len(groupResources) != 0 {
+		gk := schema.GroupKind{Group: gvk.Group, Kind: gvk.Kind}
+		rm := restmapper.NewDiscoveryRESTMapper(groupResources)
+		mapping, err := rm.RESTMapping(gk, gvk.Version)
+		if err != nil {
+			return err
 		}
+		gvr = mapping.Resource
+	}
 
-	case *v1batch.Job:
-		switch Action(do) {
-		case Install:
-			if _, err = m.client.Batch().Jobs(m.Namespace).Create(def); err != nil {
-				break
-			}
+	resourceInterface := m.K8s.dynamic.Resource(gvr).Namespace(m.Namespace)
 
-			if m.Wait {
-				if err = m.waitJob(def.GetName(), m.Namespace, m.Timeout); err != nil {
-					break
-				}
-			}
+	// convert the object to unstructured
+	unstruct, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spec)
+	if err != nil {
+		return err
+	}
+	obj := unstructured.Unstructured{Object: unstruct}
 
-		case Upgrade:
-			_, err = m.client.Batch().Jobs(m.Namespace).Update(def)
-
-		case Status:
-			_, err = m.client.Batch().Jobs(m.Namespace).Get(def.GetName(), metav1.GetOptions{})
-
-		case Delete:
-			var policy metav1.DeletionPropagation = "Foreground"
-			err = m.client.Batch().Jobs(m.Namespace).Delete(def.GetName(), &metav1.DeleteOptions{PropagationPolicy: &policy})
-
-		default:
-			return fmt.Errorf("action type '%v' unknown", do)
-		}
-
-	case *v1core.PersistentVolumeClaim:
-		switch Action(do) {
-		case Install:
-			_, err = m.client.Core().PersistentVolumeClaims(m.Namespace).Create(def)
-
-		case Upgrade:
-			// can't upgrade pvc
-			break
-
-		case Status:
-			_, err = m.client.Core().PersistentVolumeClaims(m.Namespace).Get(def.GetName(), metav1.GetOptions{})
-
-		case Delete:
-			err = m.client.Core().PersistentVolumeClaims(m.Namespace).Delete(def.GetName(), &metav1.DeleteOptions{})
-
-		default:
-			return fmt.Errorf("action type '%v' unknown", do)
-		}
-
-	case *v1core.Pod:
-		switch Action(do) {
-		case Install:
-			if _, err = m.client.Core().Pods(m.Namespace).Create(def); err != nil {
-				break
-			}
-
-			if m.Wait {
-				if err = m.waitPod(def.GetName(), m.Namespace, m.Timeout); err != nil {
-					break
-				}
-			}
-
-		case Upgrade:
-			_, err = m.client.Core().Pods(m.Namespace).Update(def)
-
-		case Status:
-			_, err = m.client.Core().Pods(m.Namespace).Get(def.GetName(), metav1.GetOptions{})
-
-		case Delete:
-			err = m.client.Core().Pods(m.Namespace).Delete(def.GetName(), &metav1.DeleteOptions{})
-
-		default:
-			return fmt.Errorf("action type '%v' unknown", do)
-		}
-
-	case *v1core.Secret:
-		switch Action(do) {
-		case Install:
-			_, err = m.client.Core().Secrets(m.Namespace).Create(def)
-
-		case Upgrade:
-			_, err = m.client.Core().Secrets(m.Namespace).Update(def)
-
-		case Status:
-			_, err = m.client.Core().Secrets(m.Namespace).Get(def.GetName(), metav1.GetOptions{})
-
-		case Delete:
-			err = m.client.Core().Secrets(m.Namespace).Delete(def.GetName(), &metav1.DeleteOptions{})
-
-		default:
-			return fmt.Errorf("action type '%v' unknown", do)
-		}
-
-	case *v1core.Service:
-		switch Action(do) {
-		case Install:
-			_, err = m.client.Core().Services(m.Namespace).Create(def)
-
-		case Upgrade:
-			_, err = m.client.Core().Services(m.Namespace).Update(def)
-
-		case Status:
-			_, err = m.client.Core().Services(m.Namespace).Get(def.GetName(), metav1.GetOptions{})
-
-		case Delete:
-			err = m.client.Core().Services(m.Namespace).Delete(def.GetName(), &metav1.DeleteOptions{})
-
-		default:
-			return fmt.Errorf("action type '%v' unknown", do)
-		}
-
+	switch Action(do) {
+	case Install:
+		_, err = resourceInterface.Create(&obj, metav1.CreateOptions{})
+	case Upgrade:
+		_, err = resourceInterface.Update(&obj, metav1.UpdateOptions{})
+	case Status:
+		_, err = resourceInterface.Get(obj.GetName(), metav1.GetOptions{})
+	case Delete:
+		err = resourceInterface.Delete(obj.GetName(), &metav1.DeleteOptions{})
 	default:
-		return fmt.Errorf("object type '%v' unknown", def)
+		return fmt.Errorf("action type '%v' unknown", do)
+	}
+
+	if err == nil && m.Wait {
+		switch def := spec.(type) {
+		case *v1batch.Job:
+			err = m.waitJob(def.GetName(), m.Namespace, m.Timeout)
+		case *v1core.Pod:
+			err = m.waitPod(def.GetName(), m.Namespace, m.Timeout)
+		default:
+			return fmt.Errorf("object type '%v' unknown", def)
+		}
 	}
 
 	return err
 }
 
-// Install the decoded Kubernetes object
-func (m *Manifest) Install() error {
-	return m.Execute(Install)
+// Workflow executes against each kubernetes spec
+func (m *Manifest) Workflow(do Action) error {
+	specs, err := m.buildObjects()
+	if err != nil {
+		return err
+	}
+	for _, spec := range specs {
+		if spec != nil {
+			if err = m.Execute(spec, do); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
 }
 
-// Upgrade the decoded Kubernetes object
+// Install the decoded kubernetes object
+func (m *Manifest) Install() error {
+	return m.Workflow(Install)
+}
+
+// Upgrade the decoded kubernetes object
 func (m *Manifest) Upgrade() error {
-	return m.Execute(Upgrade)
+	return m.Workflow(Upgrade)
 }
 
 // Status returns true if the object exists
 func (m *Manifest) Status() (bool, error) {
-	err := m.Execute(Status)
+	err := m.Workflow(Status)
 	if err != nil {
 		return false, err
 	}
 	return true, err
 }
 
-// Delete the decoded Kubernetes object
+// Delete the decoded kubernetes object
 func (m *Manifest) Delete() error {
-	return m.Execute(Delete)
+	return m.Workflow(Delete)
 }

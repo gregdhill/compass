@@ -22,6 +22,17 @@ metadata:
   creationTimestamp: null
   name: secret-data
 type: Opaque
+
+---
+
+apiVersion: v1
+kind: ConfigMap
+data:
+  test: "data"
+metadata:
+  creationTimestamp: null
+  name: config-data
+type: Opaque
 `
 
 func TestCreateDelete(t *testing.T) {

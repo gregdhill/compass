@@ -2,7 +2,7 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/gregdhill/compass)](https://goreportcard.com/report/github.com/monax/compass)
 
-Inspired by [bashful](https://github.com/wagoodman/bashful), compass is a declarative pipelining and templating tool for Helm. Simply describe how the environment should be setup, and it will chart out a direction for your stack(s). As it is still in early development, please use with caution.
+A cloud native pipeline and templating tool. Simply describe how the environment should be setup, and it will chart out a direction for your stack(s). As it is still in early development, please use with caution.
 
 ## Features
 

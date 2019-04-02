@@ -15,8 +15,11 @@ import (
 	v1batch "k8s.io/api/batch/v1"
 	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/dynamic"
+	dfake "k8s.io/client-go/dynamic/fake"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/kubernetes/fake"
+	kfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/tools/portforward"
@@ -28,37 +31,47 @@ import (
 
 // K8s represents a connection to kubernetes
 type K8s struct {
-	client kubernetes.Interface
-	config *rest.Config
+	typed   kubernetes.Interface
+	dynamic dynamic.Interface
+	config  *rest.Config
 }
 
 // NewK8s populates a new connection
 func NewK8s() *K8s {
+	var k8s K8s
+	var err error
+
 	// Fetch in-cluster config, if err try local
-	config, err := rest.InClusterConfig()
-	if err != nil {
-		config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
+	if k8s.config, err = rest.InClusterConfig(); err != nil {
+		k8s.config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
 		if err != nil {
 			panic(err)
 		}
 	}
 
-	client, err := kubernetes.NewForConfig(config)
-	if err != nil {
+	if k8s.typed, err = kubernetes.NewForConfig(k8s.config); err != nil {
 		panic(err)
 	}
 
-	return &K8s{client, config}
+	if k8s.dynamic, err = dynamic.NewForConfig(k8s.config); err != nil {
+		panic(err)
+	}
+
+	return &k8s
 }
 
 // NewFakeK8s returns a testing instance
 func NewFakeK8s() *K8s {
-	return &K8s{client: fake.NewSimpleClientset()}
+	scheme := runtime.NewScheme()
+	return &K8s{
+		typed:   kfake.NewSimpleClientset(),
+		dynamic: dfake.NewSimpleDynamicClient(scheme),
+	}
 }
 
-// FindPod finds a pod based on the namespace and the name label
+// FindPod finds a pod based on the namespace and the given label
 func (k8s *K8s) FindPod(namespace, label string) (result string, err error) {
-	pods, err := k8s.client.Core().Pods(namespace).List(metav1.ListOptions{LabelSelector: label})
+	pods, err := k8s.typed.Core().Pods(namespace).List(metav1.ListOptions{LabelSelector: label})
 	if len(pods.Items) < 1 {
 		return result, errors.New("no pods found")
 	}
@@ -105,7 +118,7 @@ func (k8s *K8s) ForwardPod(name, namespace, port string) chan struct{} {
 }
 
 func (k8s *K8s) getPodLogs(namespace, name string) (string, error) {
-	req := k8s.client.Core().Pods(namespace).GetLogs(name, &v1core.PodLogOptions{})
+	req := k8s.typed.Core().Pods(namespace).GetLogs(name, &v1core.PodLogOptions{})
 	readCloser, err := req.Stream()
 	if err != nil {
 		return "", err
@@ -118,10 +131,10 @@ func (k8s *K8s) getPodLogs(namespace, name string) (string, error) {
 func (k8s *K8s) waitJob(namespace, jobName string, timeout int64) error {
 	// cleanup job and associated pods
 	var policy metav1.DeletionPropagation = "Foreground"
-	defer k8s.client.Batch().Jobs(namespace).Delete(jobName, &metav1.DeleteOptions{PropagationPolicy: &policy})
+	defer k8s.typed.Batch().Jobs(namespace).Delete(jobName, &metav1.DeleteOptions{PropagationPolicy: &policy})
 
 	// make a watcher to check if this job succeeds or fails
-	watch, err := k8s.client.Batch().Jobs(namespace).Watch(metav1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName), TimeoutSeconds: &timeout})
+	watch, err := k8s.typed.Batch().Jobs(namespace).Watch(metav1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName), TimeoutSeconds: &timeout})
 	if err != nil {
 		return err
 	}
@@ -149,7 +162,7 @@ func (k8s *K8s) waitJob(namespace, jobName string, timeout int64) error {
 
 func (k8s *K8s) waitPod(namespace, podName string, timeout int64) error {
 	// make a watcher to wait for this pod to be ready
-	watch, err := k8s.client.Core().Pods(namespace).Watch(metav1.ListOptions{LabelSelector: fmt.Sprintf("name=%s", podName), TimeoutSeconds: &timeout})
+	watch, err := k8s.typed.Core().Pods(namespace).Watch(metav1.ListOptions{LabelSelector: fmt.Sprintf("name=%s", podName), TimeoutSeconds: &timeout})
 	if err != nil {
 		return err
 	}
@@ -164,7 +177,7 @@ func (k8s *K8s) waitPod(namespace, podName string, timeout int64) error {
 
 // FromConfigMap reads an entry from a ConfigMap
 func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err error) {
-	cm, err := k8s.client.Core().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
+	cm, err := k8s.typed.Core().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
 	if cm == nil {
 		return result, errors.New("failed to get configmap")
 	}
@@ -173,7 +186,7 @@ func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err e
 
 // FromSecret reads an entry from a Secret
 func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err error) {
-	sec, err := k8s.client.Core().Secrets(namespace).Get(name, metav1.GetOptions{})
+	sec, err := k8s.typed.Core().Secrets(namespace).Get(name, metav1.GetOptions{})
 	if sec == nil {
 		return result, errors.New("failed to get secret")
 	}
@@ -183,7 +196,7 @@ func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err erro
 // CreateNamespace tells the k8s api to make a namespace
 func (k8s *K8s) CreateNamespace(name string) error {
 	ns := &v1core.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
-	_, err := k8s.client.Core().Namespaces().Create(ns)
+	_, err := k8s.typed.Core().Namespaces().Create(ns)
 	return err
 }
 
