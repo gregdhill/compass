@@ -2,27 +2,25 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/gregdhill/compass)](https://goreportcard.com/report/github.com/monax/compass)
 
-A cloud native pipeline and templating tool. Simply describe how the environment should be setup, and it will chart out a direction for your stack(s). As it is still in early development, please use with caution.
+A cloud native pipeline and templating tool. Simply describe how the environment should be setup, and it will find a direction for your stack. As it is still in early development, please use with caution.
 
 ## Features
 
-- [x] Stack Creation / Destruction
-- [x] Environment Specific Values
-- [x] Chart Dependencies & Variable Requirements
-- [x] Install & Forget Chart
-- [x] Only Install Chart & Dependencies
-- [x] Pre/Post-Deployment Bash Jobs
-- [x] Explicit or Global Values (Namespace, Release, Version)
-- [x] Extrapolate from Initial Template
-- [x] Output JSON Values
-
-### Rendering
-
-- [x] Authenticate w/ Docker API
-- [x] Fetch Docker Digest By Tag
-- [x] Get ConfigMap or Secret Data
-- [x] Read Environment Variables
-- [x] Parse JSON Dynamically
+- Combine Kubernetes Specifications & Helm Charts
+  - Install, upgrade & delete cloud resources.
+  - Build a pipeline with dependencies and requirements.
+  - Combine with shell scripts.
+  - Choose to forget about an object once installed.
+- Layer Go Templates
+  - Inject key:value pairs through the command-line.
+  - Render intermediate input templates.
+  - Render final resource input.
+  - Handy Go Functions
+    - Authenticate w/ Docker API
+    - Fetch Docker Digest By Tag
+    - Get ConfigMap or Secret Data
+    - Read Environment Variables
+    - Parse JSON Dynamically
 
 ## Installation
 
@@ -30,6 +28,7 @@ You'll need Go (version >= 1.11) [installed and correctly setup](https://golang.
 
 ```bash
 go get github.com/monax/compass
+compass --help
 ```
 
 ## Getting Started
@@ -39,91 +38,130 @@ We'll need a [YAML](https://yaml.org) configuration file I like to call a scroll
 ```yaml
 # scroll.yaml
 values:
-  imageRepo: "docker/image"
-  imageTag: "latest"
+  namespace: default
+  image: ipfs/go-ipfs
+  tag: v0.4.9
+  add: true
 
 stages:
-  first:
+  ipfs:
     kind: helm
     release: my-release
-    namespace: default
     repository: stable
-    name: chart
+    name: ipfs
     input: values.yaml
+
+  put:
+    kind: kube
+    depends:
+    - ipfs
+    requires:
+    - add
+    input: manifest.yaml
 ```
 
-If you save that as `scroll.yaml` you'll see that another file named `values.yaml` is required, so let's go ahead and create that:
+If you save that as `scroll.yaml` you'll see that two other files named `values.yaml` and `spec.yaml` are required, so let's go ahead and create them:
 
 ```yaml
 # values.yaml
-image:
-  repository: {{ .imageRepo }}
-  tag: {{ .imageTag }}
-  pullPolicy: Always
+
+{{ $ipfs_auth := (printf "https://auth.docker.io/token?service=registry.docker.io&scope=repository:%s:pull" .image) }}
+image: {{ printf "%s@sha256" .image }}:{{ getDigest "https://index.docker.io" .image .tag (getAuth $ipfs_auth) }}
+
+replicaCount: 2
+persistence:
+  enabled: true
+  size: "8Gi"
 ```
 
-This is designed to mimic the `values.yaml` required by most Helm charts, but it also allows us to add an extra layer of templating on top. Additional arguments can also be added from a file specified by the `--import` flag. Let's build what we have so far:
+```yaml
+# manifest.yaml
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ .ipfs_release }}-add
+spec:
+  template:
+    spec:
+      containers:
+      - name: add-object
+        image: appropriate/curl
+        imagePullPolicy: Always
+        command: ["/bin/sh", "-c", 'curl -F file=@entrypoint.sh "http://{{ .ipfs_release }}:5001/api/v0/add"']
+      restartPolicy: OnFailure
+  backoffLimit: 1
+```
+
+This workflow will bootstrap a two node IPFS setup on your cluster and run a job to populate it with a file. This works because the [stable chart](https://github.com/helm/charts/tree/master/stable/ipfs/) actually sets up a service for the running deployment which can be reached using the name of the release. Naturally extending the definitions supported by Helm, this job could also have been suited as a `post-install` hook but it's easier to just declare it here as a dependency. With custom templating we can share definitions across applications and add in overlay functions such as `getDigest` which ensures that we always get the latest SHA hash for the given docker tag. If, on creation, we decided not to run the job, we can just remove the `add` value.
 
 ```bash
 compass scroll.yaml
 ```
 
-This will setup `stable/chart` in namespace `default` with the name `my-release`, analogous to:
-
-```bash
-helm upgrade --install my-release stable/chart --namespace=default --set 'repository="docker/image",tag="latest",pullPolicy=Always'
-```
-
-However the aim here is to simplify multi-chart, multi-environment workflows (i.e. production vs staging).
-
 ## Advanced
 
-Let's dive into a deeper example:
+There are many more pipeline options:
 
 ```yaml
 # scroll.yaml
-values:
-  imageRepo: "docker/image"
-  imageTag: "latest"
-  environment: "production"
 
 stages:
-  test1:
+  one:
+    # helm stuff
     kind: helm
     release: my-release-1
     namespace: default
     repository: stable
     name: chart_one
+    # once installed, don't upgrade
+    abandon: true
+    # read this input template
     input: values1.yaml
-  test2:
+
+  two:
     kind: helm
     release: my-release-2
     namespace: default
     repository: stable
     name: chart_two
+    # requirements not met, don't install
+    requires:
+    - some_key
     input: values2.yaml
-    depends:
-    - test1
+
+  three:
+    kind: kubernetes
+    namespace: default
+    # bash scripts to run before and after
     jobs:
+      before:
+      - this.sh
       after:
-      - ./script/publish.sh
+      - that.sh
+    # add extra values only for this stage
+    values:
+      key: value
+    input: manifest.yaml
+
+  four:
+    kind: kube
+    namespace: default
+    input: manifest.yaml
+    # wait for three to install / upgrade
+    depends:
+    - three
+    # then delete this object
+    remove: true
 ```
 
-```yaml
-# values1.yaml
-image:
-  repository: {{ .imageRepo }}@sha256
-{{ if eq .environment "production" }}
-  tag: {{ getDigest .docker_url .imageRepo "master" (getAuth "docker.hub") }}
-{{ else }}
-  tag: {{ getDigest .docker_url .imageRepo "develop" (getAuth "docker.hub") }}
-{{ end }}
+And a number of helpful templating functions:
+
 ```
-
-Executing `compass scroll.yaml` will first prepare two releases with one dependency (`test1 -> test2`). When rendering the first values template it will traverse the `production` logic which calls a function named `digest` on the `master` tag. This fetches the latest digest for that release tag from the targeted docker API to ensure that Kubernetes collects our most up-to-date image. Once that has finished installing it will trigger the `test2` deployment. This has a post deployment job which calls a simple bash script called `publish.sh`. This will also have access to all values used in the pipeline such as `.imageRepo`.
-
-To get a quick glimpse of what values are generated from your pipeline, use the following command:
-
-```bash
-compass scroll.yaml -export
+getDigest <server> <repo> <tag> <auth_token>
+getAuth <url>
+fromConfigMap <name> <namespace> <key>
+fromSecret <name> <namespace> <key>
+parseJSON <input> <keys...>
+readEnv <envname>
+readFile <filename>
 ```

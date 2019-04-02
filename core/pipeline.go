@@ -1,7 +1,7 @@
 package core
 
 import (
-	"fmt"
+	"io/ioutil"
 	"log"
 	"os"
 	"sync"
@@ -99,13 +99,16 @@ func (pl *Pipeline) Connect(tillerName, tillerPort string) (template.FuncMap, fu
 
 func renderFuncs(k8s *kube.K8s) template.FuncMap {
 	return template.FuncMap{
-		"readEnv":       os.Getenv,
 		"getDigest":     docker.GetImageHash,
 		"getAuth":       docker.GetAuthToken,
 		"fromConfigMap": k8s.FromConfigMap,
 		"fromSecret":    k8s.FromSecret,
 		"parseJSON":     kube.ParseJSON,
-		"throwError":    func(msg string) (string, error) { return msg, fmt.Errorf(msg) },
+		"readEnv":       os.Getenv,
+		"readFile": func(filename string) (string, error) {
+			data, err := ioutil.ReadFile(filename)
+			return string(data), err
+		},
 	}
 }
 

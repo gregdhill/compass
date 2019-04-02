@@ -59,17 +59,17 @@ func (m *Manifest) buildObjects() ([]runtime.Object, error) {
 	return specs, nil
 }
 
-type Action string
+type action string
 
 const (
-	Install Action = "install"
-	Upgrade Action = "upgrade"
-	Status  Action = "status"
-	Delete  Action = "delete"
+	install action = "install"
+	upgrade action = "upgrade"
+	status  action = "status"
+	delete  action = "delete"
 )
 
 // Execute performs actions against the kubernetes api
-func (m *Manifest) Execute(spec runtime.Object, do Action) error {
+func (m *Manifest) Execute(spec runtime.Object, do action) error {
 	gvk := spec.GetObjectKind().GroupVersionKind()
 	gvr := schema.GroupVersionResource{Group: gvk.Group, Version: gvk.Version}
 
@@ -98,14 +98,14 @@ func (m *Manifest) Execute(spec runtime.Object, do Action) error {
 	}
 	obj := unstructured.Unstructured{Object: unstruct}
 
-	switch Action(do) {
-	case Install:
+	switch action(do) {
+	case install:
 		_, err = resourceInterface.Create(&obj, metav1.CreateOptions{})
-	case Upgrade:
+	case upgrade:
 		_, err = resourceInterface.Update(&obj, metav1.UpdateOptions{})
-	case Status:
+	case status:
 		_, err = resourceInterface.Get(obj.GetName(), metav1.GetOptions{})
-	case Delete:
+	case delete:
 		err = resourceInterface.Delete(obj.GetName(), &metav1.DeleteOptions{})
 	default:
 		return fmt.Errorf("action type '%v' unknown", do)
@@ -126,7 +126,7 @@ func (m *Manifest) Execute(spec runtime.Object, do Action) error {
 }
 
 // Workflow executes against each kubernetes spec
-func (m *Manifest) Workflow(do Action) error {
+func (m *Manifest) Workflow(do action) error {
 	specs, err := m.buildObjects()
 	if err != nil {
 		return err
@@ -141,26 +141,26 @@ func (m *Manifest) Workflow(do Action) error {
 	return nil
 }
 
-// Install the decoded kubernetes object
+// Install the decoded kubernetes objects
 func (m *Manifest) Install() error {
-	return m.Workflow(Install)
+	return m.Workflow(install)
 }
 
-// Upgrade the decoded kubernetes object
+// Upgrade the decoded kubernetes objects
 func (m *Manifest) Upgrade() error {
-	return m.Workflow(Upgrade)
+	return m.Workflow(upgrade)
 }
 
-// Status returns true if the object exists
+// Status returns true if the objects exists
 func (m *Manifest) Status() (bool, error) {
-	err := m.Workflow(Status)
+	err := m.Workflow(status)
 	if err != nil {
 		return false, err
 	}
-	return true, err
+	return true, nil
 }
 
-// Delete the decoded kubernetes object
+// Delete the decoded kubernetes objects
 func (m *Manifest) Delete() error {
-	return m.Workflow(Delete)
+	return m.Workflow(delete)
 }
