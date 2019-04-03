@@ -21,8 +21,8 @@ type Jobs struct {
 
 // Stage represents a single part of the deployment pipeline
 type Stage struct {
-	Abandon  bool        `yaml:"abandon"`  // install only
 	Depends  []string    `yaml:"depends"`  // dependencies
+	Forget   bool        `yaml:"forget"`   // install only
 	Input    string      `yaml:"input"`    // template file
 	Jobs     Jobs        `yaml:"jobs"`     // bash jobs
 	Kind     string      `yaml:"kind"`     // type of deploy
@@ -108,7 +108,7 @@ func (stg *Stage) Backward(key string, global util.Values, deps *Depends, force,
 	}
 
 	// don't delete by default
-	if !force && stg.Abandon {
+	if !force && stg.Forget {
 		log.Printf("[%s] ignoring: %s\n", stg.Kind, key)
 		return fmt.Errorf("[%s] not deleting stage %s", stg.Kind, key)
 	}
@@ -133,7 +133,7 @@ func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, 
 
 	// stop if already installed and abandoned
 	installed, _ := stg.Status()
-	if installed && !force && stg.Abandon {
+	if installed && !force && stg.Forget {
 		log.Printf("[%s] ignoring: %s\n", stg.Kind, key)
 		return nil
 	}

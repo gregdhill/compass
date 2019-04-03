@@ -11,8 +11,8 @@ import (
 
 func newTestChart() *Stage {
 	return &Stage{
-		Abandon: false,
-		Kind:    "helm",
+		Forget: false,
+		Kind:   "helm",
 		Resource: &helm.Chart{
 			Name:       "burrow",
 			Repository: "stable",
@@ -45,8 +45,8 @@ spec:
 func newTestManifest() *Stage {
 	k8s := kube.NewFakeK8s()
 	stg := Stage{
-		Abandon: false,
-		Kind:    "kube",
+		Forget: false,
+		Kind:   "kube",
 		Resource: &kube.Manifest{
 			Namespace: "test-namespace",
 			Object:    []byte(testJob),
