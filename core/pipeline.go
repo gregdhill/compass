@@ -76,7 +76,7 @@ func (pl *Pipeline) Lint(in util.Values) (err error) {
 }
 
 // Connect links all of our stages to their required resources
-func (pl *Pipeline) Connect(tillerName, tillerPort string) (*kube.K8s, func()) {
+func (pl *Pipeline) Connect(tillerName, tillerPort string) (func(string, util.Values) ([]byte, error), func()) {
 	k8s := kube.NewK8s()
 	bridge := helm.Setup(k8s, tillerName, tillerPort)
 
@@ -90,7 +90,9 @@ func (pl *Pipeline) Connect(tillerName, tillerPort string) (*kube.K8s, func()) {
 		}
 	}
 
-	return k8s, bridge.Close
+	return func(name string, input util.Values) ([]byte, error) {
+		return Template(name, input, k8s)
+	}, bridge.Close
 }
 
 // Template reads a file and renders it according to the provided functions

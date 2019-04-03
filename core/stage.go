@@ -26,8 +26,8 @@ type Stage struct {
 	Input    string      `yaml:"input"`    // template file
 	Jobs     Jobs        `yaml:"jobs"`     // bash jobs
 	Kind     string      `yaml:"kind"`     // type of deploy
-	Requires []string    `yaml:"requires"` // env requirements
 	Remove   bool        `yaml:"remove"`   // delete instead
+	Requires util.Values `yaml:"requires"` // env requirements
 	Values   util.Values `yaml:"values"`   // additional values
 	Resource
 	*kube.K8s
@@ -86,13 +86,15 @@ func shellJobs(values []string, jobs []string, verbose bool) {
 	}
 }
 
-func checkRequires(values map[string]string, reqs []string) string {
-	for _, r := range reqs {
-		if _, exists := values[r]; !exists {
-			return r
+func checkRequires(values util.Values, reqs util.Values) error {
+	for k, v := range reqs {
+		if _, exists := values[k]; !exists {
+			return fmt.Errorf("argument '%s' not given", k)
+		} else if values[k] != v {
+			return fmt.Errorf("argument '%s' not given value '%s'", k, v)
 		}
 	}
-	return ""
+	return nil
 }
 
 // Backward pass over the graph
@@ -100,8 +102,8 @@ func (stg *Stage) Backward(key string, global util.Values, deps *Depends, force,
 	defer deps.Complete(stg.Depends...) // signal its dependencies once finished
 
 	// only continue if required variables are set
-	if req := checkRequires(global, stg.Requires); req != "" {
-		log.Printf("[%s] ignoring: %s, requirement '%s' not met\n", stg.Kind, key, req)
+	if err := checkRequires(global, stg.Requires); err != nil {
+		log.Printf("[%s] ignoring: %s: %s\n", stg.Kind, key, err.Error())
 		return nil
 	}
 
@@ -139,8 +141,8 @@ func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, 
 	local := global.Duplicate()
 	local.Append(stg.Values)
 	shellVars := local.ToSlice()
-	if req := checkRequires(local, stg.Requires); req != "" {
-		log.Printf("[%s] ignoring: %s, requirement '%s' not met\n", stg.Kind, key, req)
+	if err := checkRequires(local, stg.Requires); err != nil {
+		log.Printf("[%s] ignoring: %s: %s\n", stg.Kind, key, err.Error())
 		return nil
 	}
 
