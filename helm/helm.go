@@ -70,7 +70,7 @@ func (c *Chart) Lint(key string, in *util.Values) error {
 		return fmt.Errorf("namespace for %s is empty", key)
 	}
 	if c.Release = in.Cascade(key, "release", c.Release); c.Release == "" {
-		return fmt.Errorf("namespace for %s is empty", key)
+		return fmt.Errorf("release for %s is empty", key)
 	}
 	c.Version = in.Cascade(key, "version", c.Version)
 	return nil
