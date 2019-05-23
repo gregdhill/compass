@@ -11,34 +11,27 @@ import (
 
 func TestLinter(t *testing.T) {
 	chart := newTestChart()
-
 	charts := map[string]*Stage{"test": chart}
-	pipeline := Pipeline{
-		Stages: charts,
-	}
+	pipeline := Stages(charts)
 
 	chart.Resource.(*helm.Chart).Namespace = ""
 	pipeline.Lint(util.Values(map[string]string{"test_namespace": "somewhere-else"}))
-	assert.Equal(t, "somewhere-else", pipeline.Stages["test"].Resource.(*helm.Chart).Namespace)
+	assert.Equal(t, "somewhere-else", pipeline["test"].Resource.(*helm.Chart).Namespace)
 }
 
 var testData = `
-values:
-  key: "value"
-
-stages:
-  test:
+test:
     kind: helm
     timeout: 2400
     name: chart
     repository: stable
-    abandon: true
+    forget: true
 `
 
 func TestUnmarshal(t *testing.T) {
-	pipe := Pipeline{}
+	pipe := Stages{}
 	err := yaml.Unmarshal([]byte(testData), &pipe)
 	assert.NoError(t, err)
-	assert.Equal(t, "chart", pipe.Stages["test"].Resource.(*helm.Chart).Name)
-	assert.Equal(t, "stable", pipe.Stages["test"].Resource.(*helm.Chart).Repository)
+	assert.Equal(t, "chart", pipe["test"].Resource.(*helm.Chart).Name)
+	assert.Equal(t, "stable", pipe["test"].Resource.(*helm.Chart).Repository)
 }

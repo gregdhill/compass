@@ -14,11 +14,8 @@ import (
 	"github.com/monax/compass/util"
 )
 
-// Pipeline represents the complete workflow.
-type Pipeline struct {
-	Values util.Values       `yaml:"values"`
-	Stages map[string]*Stage `yaml:"stages"`
-}
+// Stages represents the complete workflow.
+type Stages map[string]*Stage
 
 // Depends implements a mapped waitgroup for dependencies
 type Depends map[string]*sync.WaitGroup
@@ -38,8 +35,8 @@ func (d Depends) Complete(stages ...string) {
 }
 
 // BuildDepends generates a dependency map
-func (pl *Pipeline) BuildDepends(reverse bool) *Depends {
-	stages := pl.Stages
+func (stg *Stages) BuildDepends(reverse bool) *Depends {
+	stages := *stg
 	wgs := make(Depends, len(stages))
 
 	if reverse {
@@ -66,8 +63,8 @@ func (pl *Pipeline) BuildDepends(reverse bool) *Depends {
 }
 
 // Lint all the stages in our pipeline
-func (pl *Pipeline) Lint(in util.Values) (err error) {
-	for key, stage := range pl.Stages {
+func (stg *Stages) Lint(in util.Values) (err error) {
+	for key, stage := range *stg {
 		if err = stage.Lint(key, &in); err != nil {
 			return err
 		}
@@ -76,11 +73,11 @@ func (pl *Pipeline) Lint(in util.Values) (err error) {
 }
 
 // Connect links all of our stages to their required resources
-func (pl *Pipeline) Connect(tillerName, tillerPort string) (func(string, util.Values) ([]byte, error), func()) {
+func (stg *Stages) Connect(tillerName, tillerPort string) (func(string, util.Values) ([]byte, error), func()) {
 	k8s := kube.NewK8s()
 	bridge := helm.Setup(k8s, tillerName, tillerPort)
 
-	for _, stg := range pl.Stages {
+	for _, stg := range *stg {
 		stg.K8s = k8s
 		switch stg.Kind {
 		case "kube", "kubernetes":
@@ -129,13 +126,13 @@ func Template(name string, input map[string]string, k8s *kube.K8s) ([]byte, erro
 }
 
 // Destroy deletes each stage in reverse order
-func (pl *Pipeline) Destroy(input util.Values, force, verbose bool) {
+func (stg *Stages) Destroy(input util.Values, force, verbose bool) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	stages := pl.Stages
+	stages := *stg
 	wg.Add(len(stages))
-	d := pl.BuildDepends(true)
+	d := stg.BuildDepends(true)
 
 	for key, stage := range stages {
 		go func(stg *Stage, key string) {
@@ -146,13 +143,13 @@ func (pl *Pipeline) Destroy(input util.Values, force, verbose bool) {
 }
 
 // Run processes each stage in the pipeline
-func (pl *Pipeline) Run(input util.Values, force, verbose bool) {
+func (stg *Stages) Run(input util.Values, force, verbose bool) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	stages := pl.Stages
+	stages := *stg
 	wg.Add(len(stages))
-	d := pl.BuildDepends(false)
+	d := stg.BuildDepends(false)
 
 	for key, stage := range stages {
 		go func(stage *Stage, key string) {
@@ -163,12 +160,12 @@ func (pl *Pipeline) Run(input util.Values, force, verbose bool) {
 }
 
 // Until creates single resource and dependencies
-func (pl *Pipeline) Until(input util.Values, force, verbose bool, target string) {
+func (stg *Stages) Until(input util.Values, force, verbose bool, target string) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	stages := pl.Stages
-	d := pl.BuildDepends(false)
+	stages := *stg
+	d := stg.BuildDepends(false)
 
 	if _, ok := stages[target]; !ok {
 		log.Fatalf("%s does not exist", target)

@@ -35,6 +35,7 @@ type K8s struct {
 	typed   kubernetes.Interface
 	dynamic dynamic.Interface
 	config  *rest.Config
+	base    clientcmd.ClientConfig
 }
 
 // NewK8s populates a new connection
@@ -49,6 +50,10 @@ func NewK8s() *K8s {
 			log.Fatal(err)
 		}
 	}
+
+	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
+	configOverrides := &clientcmd.ConfigOverrides{}
+	k8s.base = clientcmd.NewNonInteractiveDeferredLoadingClientConfig(loadingRules, configOverrides)
 
 	if k8s.typed, err = kubernetes.NewForConfig(k8s.config); err != nil {
 		log.Fatal(err)

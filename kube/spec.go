@@ -143,6 +143,10 @@ func (m *Manifest) Workflow(do action) error {
 
 // Install the decoded kubernetes objects
 func (m *Manifest) Install() error {
+	if m.Namespace == "" {
+		ns, _, _ := m.base.Namespace()
+		m.Namespace = ns
+	}
 	return m.Workflow(install)
 }
 
