@@ -18,16 +18,15 @@ import (
 	"k8s.io/helm/pkg/helm/helmpath"
 )
 
-// Bridge represents a helm client and open conn to tiller
-type Bridge struct {
+// Tiller represents a helm client and open connection to tiller
+type Tiller struct {
 	client helm.Interface
 	envset helm_env.EnvSettings
 	tiller chan struct{}
 }
 
-// Setup creates a new connection to tiller
-func Setup(k8s *kube.K8s, namespace, remote string) *Bridge {
-
+// NewClient creates a new connection to tiller
+func NewClient(k8s *kube.K8s, namespace, remote string) *Tiller {
 	port, err := freeport.GetFreePort()
 	if err != nil {
 		log.Fatal(err)
@@ -35,20 +34,20 @@ func Setup(k8s *kube.K8s, namespace, remote string) *Bridge {
 	local := strconv.Itoa(port)
 
 	tillerTunnelAddress := fmt.Sprintf("localhost:%s", local)
-	hc := helm.NewClient(helm.Host(tillerTunnelAddress), helm.ConnectTimeout(60))
+	hl := helm.NewClient(helm.Host(tillerTunnelAddress), helm.ConnectTimeout(60))
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
 
-	return &Bridge{
-		client: hc,
+	return &Tiller{
+		client: hl,
 		envset: settings,
 		tiller: k8s.ForwardPod("tiller", namespace, local, remote),
 	}
 }
 
 // Close gracefully exits the connection to tiller
-func (b *Bridge) Close() {
-	close(b.tiller)
+func (hl *Tiller) Close() {
+	close(hl.tiller)
 }
 
 // Chart comprises the helm release
@@ -60,7 +59,7 @@ type Chart struct {
 	Namespace  string `yaml:"namespace"`  // namespace
 	Timeout    int64  `yaml:"timeout"`    // install / upgrade wait time
 	Object     []byte
-	*Bridge
+	*Tiller
 }
 
 // Lint validates the chart for required values
@@ -81,9 +80,14 @@ func (c *Chart) SetInput(obj []byte) {
 	c.Object = obj
 }
 
+// GetInput gets the templated values file
+func (c *Chart) GetInput() []byte {
+	return c.Object
+}
+
 // Connect sets the established helm connection
 func (c *Chart) Connect(bridge interface{}) {
-	c.Bridge = bridge.(*Bridge)
+	c.Tiller = bridge.(*Tiller)
 }
 
 func downloadChart(location, version string, settings helm_env.EnvSettings) (string, error) {
@@ -177,13 +181,13 @@ func (c *Chart) Status() (bool, error) {
 	return true, nil
 }
 
-// NewFakeBridge establishes a fake helm client
-func NewFakeBridge() *Bridge {
-	b := Bridge{}
+// NewFakeTiller establishes a fake helm client
+func NewFakeClient() *Tiller {
+	hl := Tiller{}
 	var client helm.FakeClient
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
-	b.client = client.Option()
-	b.envset = settings
-	return &b
+	hl.client = client.Option()
+	hl.envset = settings
+	return &hl
 }

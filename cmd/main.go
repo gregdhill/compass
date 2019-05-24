@@ -17,11 +17,10 @@ import (
 )
 
 var (
-	spec       string
+	k8s        *kube.K8s
 	templates  []string
 	values     map[string]string
 	destroy    bool
-	export     bool
 	force      bool
 	verbose    bool
 	tillerName string
@@ -33,8 +32,9 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "compass",
 	Short: "Kubernetes & Helm",
+	Long:  `Deploy a templated pipeline or install a single manifest. If no command given, output values as JSON.`,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		k8s := kube.NewK8s()
+		k8s = kube.NewClient()
 		vals := util.Values(values) // explicit cli inputs
 
 		// additional template files
@@ -46,47 +46,51 @@ var rootCmd = &cobra.Command{
 			}
 		}
 
-		if export {
-			valOut, err := json.Marshal(vals)
-			if err != nil {
-				return fmt.Errorf("couldn't marshal values: %v", err)
-			}
-			fmt.Println(string(valOut))
-			return nil
-		}
-
 		values = vals
 		return nil
 	},
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		if len(values) == 0 {
+			return fmt.Errorf("no values supplied")
+		}
+		valOut, err := json.Marshal(values)
+		if err != nil {
+			return fmt.Errorf("couldn't marshal values: %v", err)
+		}
+		fmt.Println(string(valOut))
+		return nil
+	},
+}
+
+var flowCmd = &cobra.Command{
+	Use:   "flow",
+	Short: "Run the given workflow",
+	Args:  cobra.ExactArgs(1),
+	RunE: func(cmd *cobra.Command, args []string) (err error) {
+		spec := args[0]
+
 		// populate workflow with stages
 		workflow := core.Stages{}
-		if spec != "" {
-			var data []byte
-			if data, err = ioutil.ReadFile(spec); err != nil {
-				return err
-			}
-			if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
-				return err
-			}
+		var data []byte
+		if data, err = ioutil.ReadFile(spec); err != nil {
+			return err
+		}
+		if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
+			return err
 		}
 
-		_, closer := workflow.Connect(tillerName, tillerPort)
+		closer, err := workflow.Connect(k8s, values, tillerName, tillerPort)
 		defer closer()
+		if err != nil {
+			return err
+		}
 
 		c := make(chan os.Signal)
 		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
 		go func() {
 			<-c
-			closer()
 			os.Exit(1)
 		}()
-
-		if spec == "" && !export {
-			return fmt.Errorf("no workflow file provided as argument")
-		} else if export {
-			return nil
-		}
 
 		if err = workflow.Lint(values); err != nil {
 			return err
@@ -118,10 +122,11 @@ var rootCmd = &cobra.Command{
 
 var kubeCmd = &cobra.Command{
 	Use:   "kube",
-	Short: "Template and deploy given Kubernetes specification.",
+	Short: "Template and deploy given kubernetes spec",
+	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
-		k8s := kube.NewK8s()
-
+		spec := args[0]
+		k8s := kube.NewClient()
 		out, err := core.Template(spec, values, k8s)
 		if err != nil {
 			return err
@@ -131,7 +136,7 @@ var kubeCmd = &cobra.Command{
 			Timeout:   300,
 			Object:    out,
 			Namespace: namespace,
-			K8s:       kube.NewK8s(),
+			K8s:       k8s,
 		}
 
 		if err = man.Install(); err != nil {
@@ -144,17 +149,18 @@ var kubeCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringVarP(&spec, "spec", "s", "", "YAML formatted pipeline file or Kubernetes spec")
 	rootCmd.PersistentFlags().StringArrayVarP(&templates, "template", "t", nil, "YAML files with key:value mappings")
-	rootCmd.PersistentFlags().StringToStringVar(&values, "value", nil, "Extra values to append to the pipeline")
-	rootCmd.PersistentFlags().BoolVarP(&destroy, "destroy", "d", false, "Purge all releases, top-down")
-	rootCmd.PersistentFlags().BoolVarP(&export, "export", "e", false, "Render JSON marshalled values")
-	rootCmd.PersistentFlags().BoolVarP(&force, "force", "f", false, "Force install / upgrade / delete")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "Show verbose debug information")
-	rootCmd.Flags().StringVarP(&tillerName, "tillerName", "n", "kube-system", "Namespace to search for Tiller")
-	rootCmd.Flags().StringVarP(&tillerPort, "tillerPort", "p", "44134", "Port to connect on Tiller")
-	rootCmd.Flags().StringVarP(&until, "until", "u", "", "Deploy stage and dependencies")
-	kubeCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "Namespace to deploy to")
+	rootCmd.PersistentFlags().StringToStringVar(&values, "value", nil, "extra values to append to the pipeline")
+	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "show verbose debug information")
+
+	rootCmd.Flags().BoolVarP(&destroy, "destroy", "d", false, "purge all stages, top-down")
+	rootCmd.Flags().BoolVarP(&force, "force", "f", false, "force install / upgrade / delete")
+	flowCmd.Flags().StringVarP(&tillerName, "tillerName", "n", "kube-system", "namespace to search for Tiller")
+	flowCmd.Flags().StringVarP(&tillerPort, "tillerPort", "p", "44134", "port to connect on Tiller")
+	flowCmd.Flags().StringVarP(&until, "until", "u", "", "deploy stage and dependencies")
+	rootCmd.AddCommand(flowCmd)
+
+	kubeCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace to deploy to")
 	rootCmd.AddCommand(kubeCmd)
 }
 

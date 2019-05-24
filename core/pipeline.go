@@ -73,23 +73,28 @@ func (stg *Stages) Lint(in util.Values) (err error) {
 }
 
 // Connect links all of our stages to their required resources
-func (stg *Stages) Connect(tillerName, tillerPort string) (func(string, util.Values) ([]byte, error), func()) {
-	k8s := kube.NewK8s()
-	bridge := helm.Setup(k8s, tillerName, tillerPort)
+func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerPort string) (func(), error) {
+	tiller := helm.NewClient(k8s, tillerName, tillerPort)
+	closer := func() {
+		tiller.Close()
+	}
 
 	for _, stg := range *stg {
-		stg.K8s = k8s
 		switch stg.Kind {
 		case "kube", "kubernetes":
 			stg.Connect(k8s)
 		case "helm":
-			stg.Connect(bridge)
+			stg.Connect(tiller)
 		}
+
+		out, err := Template(stg.Input, input, k8s)
+		if err != nil {
+			return closer, err
+		}
+		stg.SetInput(out)
 	}
 
-	return func(name string, input util.Values) ([]byte, error) {
-		return Template(name, input, k8s)
-	}, bridge.Close
+	return closer, nil
 }
 
 // Template reads a file and renders it according to the provided functions

@@ -9,7 +9,7 @@ import (
 )
 
 func TestCreateNamespace(t *testing.T) {
-	k8s := NewFakeK8s()
+	k8s := NewFakeClient()
 	err := k8s.CreateNamespace("test")
 	assert.NoError(t, err)
 	ns, err := k8s.typed.Core().Namespaces().Get("test", metav1.GetOptions{})
@@ -18,7 +18,7 @@ func TestCreateNamespace(t *testing.T) {
 }
 
 func TestFromConfigMap(t *testing.T) {
-	k8s := NewFakeK8s()
+	k8s := NewFakeClient()
 	namespace := "kube-system"
 	err := k8s.CreateNamespace(namespace)
 	assert.NoError(t, err)
@@ -38,7 +38,7 @@ func TestFromConfigMap(t *testing.T) {
 }
 
 func TestFromSecret(t *testing.T) {
-	k8s := NewFakeK8s()
+	k8s := NewFakeClient()
 	namespace := "kube-system"
 	err := k8s.CreateNamespace(namespace)
 	assert.NoError(t, err)
@@ -58,7 +58,7 @@ func TestFromSecret(t *testing.T) {
 }
 
 func TestFindTiller(t *testing.T) {
-	k8s := NewFakeK8s()
+	k8s := NewFakeClient()
 
 	pod, err := k8s.FindPod("tiller", "kube-system")
 	assert.Errorf(t, err, "tiller not found")

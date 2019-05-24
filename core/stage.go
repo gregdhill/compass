@@ -28,9 +28,7 @@ type Stage struct {
 	Kind     string      `yaml:"kind"`     // type of deploy
 	Remove   bool        `yaml:"remove"`   // delete instead
 	Requires util.Values `yaml:"requires"` // env requirements
-	Values   util.Values `yaml:"values"`   // additional values
 	Resource
-	*kube.K8s
 }
 
 // UnmarshalYAML allows us to determine the type of our resource
@@ -68,6 +66,7 @@ type Resource interface {
 	Delete() error
 	Connect(interface{})
 	SetInput([]byte)
+	GetInput() []byte
 }
 
 func shellJobs(values []string, jobs []string, verbose bool) {
@@ -117,13 +116,6 @@ func (stg *Stage) Backward(key string, global util.Values, deps *Depends, force,
 	deps.Wait(key)
 	log.Printf("[%s] deleting: %s\n", stg.Kind, key)
 
-	out, err := Template(stg.Input, global, stg.K8s)
-	if err != nil {
-		log.Fatal(err)
-	} else if out != nil {
-		stg.SetInput(out)
-	}
-
 	return stg.Delete()
 }
 
@@ -139,7 +131,6 @@ func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, 
 	}
 
 	local := global.Duplicate()
-	local.Append(stg.Values)
 	shellVars := local.ToSlice()
 	if err := checkRequires(local, stg.Requires); err != nil {
 		log.Printf("[%s] ignoring: %s: %s\n", stg.Kind, key, err.Error())
@@ -152,21 +143,15 @@ func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, 
 	shellJobs(shellVars, stg.Jobs.Before, verbose)
 	defer shellJobs(shellVars, stg.Jobs.After, verbose)
 
-	out, err := Template(stg.Input, global, stg.K8s)
-	if err != nil {
-		log.Fatal(err)
-	} else if out != nil {
-		stg.SetInput(out)
-		if verbose {
-			fmt.Println(string(out))
-		}
+	if obj := stg.GetInput(); obj != nil && verbose {
+		fmt.Println(string(obj))
 	}
 
 	if stg.Remove {
 		return stg.Delete()
 	}
 
-	installed, err = stg.Status()
+	installed, err := stg.Status()
 	if !installed {
 		log.Printf("[%s] installing: %s\n", stg.Kind, key)
 		if err := stg.Install(); err != nil {

@@ -17,12 +17,12 @@ func newTestChart() Chart {
 		Version:    "",
 		Release:    "test-release",
 		Namespace:  "test-namespace",
-		Bridge:     NewFakeBridge(),
+		Tiller:     NewFakeClient(),
 	}
 }
 
 func TestDownloadChart(t *testing.T) {
-	b := NewFakeBridge()
+	b := NewFakeClient()
 	dl := downloader.ChartDownloader{
 		HelmHome: b.envset.Home,
 		Getters:  getter.All(b.envset),
@@ -71,7 +71,7 @@ func TestInstallChart(t *testing.T) {
 func TestUpgradeChart(t *testing.T) {
 	c := newTestChart()
 
-	_, err := c.Bridge.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release), helm.InstallWait(true))
+	_, err := c.Tiller.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release), helm.InstallWait(true))
 	assert.NoError(t, err)
 
 	c.Upgrade()

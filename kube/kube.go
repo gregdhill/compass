@@ -38,8 +38,8 @@ type K8s struct {
 	base    clientcmd.ClientConfig
 }
 
-// NewK8s populates a new connection
-func NewK8s() *K8s {
+// NewClient populates a new connection
+func NewClient() *K8s {
 	var k8s K8s
 	var err error
 
@@ -66,8 +66,8 @@ func NewK8s() *K8s {
 	return &k8s
 }
 
-// NewFakeK8s returns a testing instance
-func NewFakeK8s() *K8s {
+// NewFakeClient returns a testing instance
+func NewFakeClient() *K8s {
 	scheme := runtime.NewScheme()
 	return &K8s{
 		typed:   kfake.NewSimpleClientset(),

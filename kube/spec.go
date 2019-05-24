@@ -40,6 +40,11 @@ func (m *Manifest) SetInput(obj []byte) {
 	m.Object = obj
 }
 
+// GetInput return the manifest object
+func (m *Manifest) GetInput() []byte {
+	return m.Object
+}
+
 // Connect links the manifest to the k8 api
 func (m *Manifest) Connect(k8s interface{}) {
 	m.K8s = k8s.(*K8s)

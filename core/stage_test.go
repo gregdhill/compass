@@ -10,7 +10,7 @@ import (
 )
 
 func newTestChart() *Stage {
-	return &Stage{
+	stg := &Stage{
 		Forget: false,
 		Kind:   "helm",
 		Resource: &helm.Chart{
@@ -19,10 +19,10 @@ func newTestChart() *Stage {
 			Version:    "",
 			Namespace:  "test-namespace",
 			Release:    "test-release",
-			Bridge:     helm.NewFakeBridge(),
 		},
-		K8s: kube.NewFakeK8s(),
 	}
+	stg.Connect(helm.NewFakeClient())
+	return stg
 }
 
 var testJob = `
@@ -43,7 +43,7 @@ spec:
 `
 
 func newTestManifest() *Stage {
-	k8s := kube.NewFakeK8s()
+	k8s := kube.NewFakeClient()
 	stg := Stage{
 		Forget: false,
 		Kind:   "kube",

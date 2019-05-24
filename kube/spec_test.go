@@ -9,7 +9,7 @@ import (
 func newTestManifest() Manifest {
 	return Manifest{
 		Namespace: "test-namespace",
-		K8s:       NewFakeK8s(),
+		K8s:       NewFakeClient(),
 	}
 }
 
