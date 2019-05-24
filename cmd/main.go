@@ -153,8 +153,8 @@ func init() {
 	rootCmd.PersistentFlags().StringToStringVar(&values, "value", nil, "extra values to append to the pipeline")
 	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "show verbose debug information")
 
-	rootCmd.Flags().BoolVarP(&destroy, "destroy", "d", false, "purge all stages, top-down")
-	rootCmd.Flags().BoolVarP(&force, "force", "f", false, "force install / upgrade / delete")
+	flowCmd.Flags().BoolVarP(&destroy, "destroy", "d", false, "purge all stages, top-down")
+	flowCmd.Flags().BoolVarP(&force, "force", "f", false, "force install / upgrade / delete")
 	flowCmd.Flags().StringVarP(&tillerName, "tillerName", "n", "kube-system", "namespace to search for Tiller")
 	flowCmd.Flags().StringVarP(&tillerPort, "tillerPort", "p", "44134", "port to connect on Tiller")
 	flowCmd.Flags().StringVarP(&until, "until", "u", "", "deploy stage and dependencies")
