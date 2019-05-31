@@ -7,6 +7,7 @@ import (
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
 	"github.com/stretchr/testify/assert"
+	"github.com/monax/compass/util"
 )
 
 func newTestChart() *Stage {
@@ -72,7 +73,7 @@ func TestCreateDestroyChart(t *testing.T) {
 	w.Add(1)
 	wgs["test"] = &w
 
-	values := make(map[string]string, 1)
+	values := make(util.Values, 1)
 	err := chart.Forward("test", values, &wgs, false, false)
 	assert.NoError(t, err)
 
@@ -88,7 +89,7 @@ func TestCreateDestroyManifest(t *testing.T) {
 	w.Add(1)
 	wgs["test"] = &w
 
-	values := make(map[string]string, 1)
+	values := make(util.Values, 1)
 	err := man.Forward("test", values, &wgs, false, false)
 	assert.NoError(t, err)
 

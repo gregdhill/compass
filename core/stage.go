@@ -26,7 +26,6 @@ type Stage struct {
 	Input    string      `yaml:"input"`    // template file
 	Jobs     Jobs        `yaml:"jobs"`     // bash jobs
 	Kind     string      `yaml:"kind"`     // type of deploy
-	Remove   bool        `yaml:"remove"`   // delete instead
 	Requires util.Values `yaml:"requires"` // env requirements
 	Resource
 }
@@ -145,10 +144,6 @@ func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, 
 
 	if obj := stg.GetInput(); obj != nil && verbose {
 		fmt.Println(string(obj))
-	}
-
-	if stg.Remove {
-		return stg.Delete()
 	}
 
 	installed, err := stg.Status()

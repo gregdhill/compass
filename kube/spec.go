@@ -22,7 +22,7 @@ import (
 type Manifest struct {
 	Namespace string `yaml:"namespace"` // namespace
 	Timeout   int64  `yaml:"timeout"`   // install / upgrade wait time
-	Wait      bool   `yaml:"wait"`
+	Remove    bool   `yaml:"remove"`    // remove once installed
 	Object    []byte
 	*K8s
 }
@@ -116,14 +116,12 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 		return fmt.Errorf("action type '%v' unknown", do)
 	}
 
-	if err == nil && m.Wait {
+	if err == nil {
 		switch def := spec.(type) {
 		case *v1batch.Job:
-			err = m.waitJob(def.GetName(), m.Namespace, m.Timeout)
+			err = m.waitJob(m.Namespace, def.GetName(), m.Remove, m.Timeout)
 		case *v1core.Pod:
-			err = m.waitPod(def.GetName(), m.Namespace, m.Timeout)
-		default:
-			return fmt.Errorf("object type '%v' unknown", def)
+			err = m.waitPod(m.Namespace, def.GetName(), m.Remove, m.Timeout)
 		}
 	}
 

@@ -134,7 +134,7 @@ func (k8s *K8s) getPodLogs(namespace, name string) (string, error) {
 	return buf.String(), err
 }
 
-func (k8s *K8s) waitJob(namespace, jobName string, timeout int64) error {
+func (k8s *K8s) waitJob(namespace, jobName string, remove bool, timeout int64) error {
 	// cleanup job and associated pods
 	var policy metav1.DeletionPropagation = "Foreground"
 	defer k8s.typed.Batch().Jobs(namespace).Delete(jobName, &metav1.DeleteOptions{PropagationPolicy: &policy})
@@ -166,16 +166,23 @@ func (k8s *K8s) waitJob(namespace, jobName string, timeout int64) error {
 	return nil
 }
 
-func (k8s *K8s) waitPod(namespace, podName string, timeout int64) error {
+func (k8s *K8s) waitPod(namespace, podName string, remove bool, timeout int64) error {
 	// make a watcher to wait for this pod to be ready
-	watch, err := k8s.typed.Core().Pods(namespace).Watch(metav1.ListOptions{LabelSelector: fmt.Sprintf("name=%s", podName), TimeoutSeconds: &timeout})
+	watch, err := k8s.typed.Core().Pods(namespace).Watch(metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", podName), TimeoutSeconds: &timeout})
 	if err != nil {
 		return err
 	}
 
 	for event := range watch.ResultChan() {
-		if event.Object.(*v1core.Pod).Status.Phase == "Running" {
+		phase := event.Object.(*v1core.Pod).Status.Phase
+		if phase == "Succeeded" {
+			if remove {
+				return k8s.typed.CoreV1().Pods(namespace).Delete(podName, &metav1.DeleteOptions{})
+			}
 			return nil
+		} else if phase == "Failed" || phase == "Unknown" {
+			// TODO: retry
+			return fmt.Errorf("error waiting for pod to complete")
 		}
 	}
 	return nil

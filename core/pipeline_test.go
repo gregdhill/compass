@@ -15,7 +15,7 @@ func TestLinter(t *testing.T) {
 	pipeline := Stages(charts)
 
 	chart.Resource.(*helm.Chart).Namespace = ""
-	pipeline.Lint(util.Values(map[string]string{"test_namespace": "somewhere-else"}))
+	pipeline.Lint(util.Values{"test_namespace": "somewhere-else"})
 	assert.Equal(t, "somewhere-else", pipeline["test"].Resource.(*helm.Chart).Namespace)
 }
 
