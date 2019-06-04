@@ -6,8 +6,11 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+
+	"gopkg.in/src-d/go-git.v4"
 )
 
+// IsDir returns true if the given path corresponds to a directory
 func IsDir(name string) bool {
 	file, err := os.Open(name)
 	if err != nil {
@@ -20,6 +23,7 @@ func IsDir(name string) bool {
 	return stat.IsDir()
 }
 
+// PackageDir recursively adds files under the given directory to an in-memory tar file
 func PackageDir(path string) ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
@@ -49,4 +53,19 @@ func PackageDir(path string) ([]byte, error) {
 	}
 
 	return buf.Bytes(), nil
+}
+
+// GetHead returns the commit ID of the repo located at the given path
+func GetHead(path string) (string, error) {
+	repo, err := git.PlainOpen(path)
+	if err != nil {
+		return "", err
+	}
+
+	ref, err := repo.Head()
+	if err != nil {
+		return "", err
+	}
+
+	return ref.Hash().String(), nil
 }

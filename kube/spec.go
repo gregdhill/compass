@@ -54,7 +54,7 @@ func (m *Manifest) Connect(k8s interface{}) {
 func (m *Manifest) buildObjects() ([]runtime.Object, error) {
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	objs := bytes.Split(m.Object, []byte("---"))
-	log.Infof("Given %d specifications", len(objs))
+	log.Infof("Given %d specification(s)", len(objs))
 	var specs []runtime.Object
 	for _, obj := range objs {
 		spec, _, err := decode(obj, nil, nil)

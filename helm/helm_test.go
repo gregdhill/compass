@@ -29,7 +29,7 @@ func TestDownloadChart(t *testing.T) {
 	}
 
 	_, err := downloadChart("fake/chart", "", cli.envset)
-	assert.Error(t, err, "repo fake not found")
+	assert.Error(t, err)
 
 	_, err = downloadChart("stable/burrow", "", cli.envset)
 	assert.NoError(t, err)
@@ -72,7 +72,7 @@ func TestUpgradeChart(t *testing.T) {
 	chart := newTestChart()
 
 	_, err := chart.Tiller.client.InstallRelease(chart.Name, chart.Namespace, helm.ReleaseName(chart.Release), helm.InstallWait(true))
-	assert.NoError(t, err)
+	assert.NoError(t, err) 
 
 	chart.Upgrade()
 	out, err := chart.Status()

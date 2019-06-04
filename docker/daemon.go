@@ -7,17 +7,32 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path"
 	"strings"
 
 	"github.com/docker/docker/api/types"
-	"github.com/docker/docker/client"
+	"github.com/moby/moby/client"
 	"github.com/monax/compass/util"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
 )
 
-func buildImage(ctx context.Context, cli *client.Client, buildCtx, ref string) error {
+func streamLogs(body io.ReadCloser, field string) error {
+	scanner := bufio.NewScanner(body)
+	for scanner.Scan() {
+		line := make(map[string]string)
+		json.Unmarshal(scanner.Bytes(), &line)
+		out := strings.TrimSuffix(line[field], "\n")
+		if out != "" {
+			log.Info(out)
+		}
+	}
+
+	return scanner.Err()
+}
+
+func buildImage(ctx context.Context, cli client.ImageAPIClient, buildCtx, ref string) error {
 	log.Infof("Packaging from: %s", buildCtx)
 	tarArch, err := util.PackageDir(buildCtx)
 	if err != nil {
@@ -36,20 +51,10 @@ func buildImage(ctx context.Context, cli *client.Client, buildCtx, ref string) e
 	}
 	defer imageBuildResponse.Body.Close()
 
-	scanner := bufio.NewScanner(imageBuildResponse.Body)
-	for scanner.Scan() {
-		line := make(map[string]string)
-		json.Unmarshal(scanner.Bytes(), &line)
-		out := strings.TrimSuffix(line["stream"], "\n")
-		if out != "" {
-			log.Info(out)
-		}
-	}
-
-	return scanner.Err()
+	return streamLogs(imageBuildResponse.Body, "stream")
 }
 
-func pushImage(ctx context.Context, cli *client.Client, auth, ref string) error {
+func pushImage(ctx context.Context, cli client.ImageAPIClient, auth, ref string) error {
 	imagePushResp, err := cli.ImagePush(ctx, ref,
 		types.ImagePushOptions{
 			RegistryAuth: auth,
@@ -59,17 +64,7 @@ func pushImage(ctx context.Context, cli *client.Client, auth, ref string) error 
 	}
 	defer imagePushResp.Close()
 
-	scanner := bufio.NewScanner(imagePushResp)
-	for scanner.Scan() {
-		line := make(map[string]string)
-		json.Unmarshal(scanner.Bytes(), &line)
-		out := strings.TrimSuffix(line["status"], "\n")
-		if out != "" {
-			log.Info(out)
-		}
-	}
-
-	return scanner.Err()
+	return streamLogs(imagePushResp, "status")
 }
 
 func serializeAuth(authConfig types.AuthConfig) (string, error) {
@@ -89,11 +84,11 @@ func checkTag(ref string) error {
 	return errors.New("no image tag supplied")
 }
 
-func tagImage(ref string) (string, error) {
+func tagRef(ref, buildCtx string) (string, error) {
 	if err := checkTag(ref); err == nil {
 		return ref, nil
 	}
-	commit, err := util.GetHead(".")
+	commit, err := util.GetHead(buildCtx)
 	log.Infof("No tag supplied, using last commit id: %s", commit)
 	return fmt.Sprintf("%s:%s", ref, commit), err
 }
@@ -105,7 +100,7 @@ func BuildAndPush(ctx context.Context, buildCtx, ref string) (string, error) {
 		return "", err
 	}
 
-	if ref, err = tagImage(ref); err != nil {
+	if ref, err = tagRef(ref, buildCtx); err != nil {
 		return "", err
 	}
 

@@ -42,8 +42,8 @@ func getDigest(ref string, conf types.AuthConfig) (string, error) {
 	return dig.Encoded(), nil
 }
 
-// GetImageHash fetches the latest image digest for the given ref (server/app:tag)
-func GetImageHash(ref string) (string, error) {
+// GetImageDigest fetches the latest image digest for the given ref (server/app:tag)
+func GetImageDigest(ref string) (string, error) {
 	if err := checkTag(ref); err != nil {
 		return "", err
 	}

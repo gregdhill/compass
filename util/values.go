@@ -69,7 +69,7 @@ func (v Values) Append(add map[string]string) {
 
 // ToSlice converts key:value to key=value
 func (v Values) ToSlice() []string {
-	values := make([]string, len(v))
+	values := make([]string, 0)
 	for key, value := range v {
 		values = append(values, fmt.Sprintf("%s=%s", key, value))
 	}
@@ -86,7 +86,7 @@ func (v Values) Duplicate() Values {
 }
 
 // Cascade returns the first non empty value
-func (v Values) Cascade(name, field, current string) string {
+func (v Values) Cascade(current, name, field string) string {
 	options := [3]string{
 		current,
 		v[fmt.Sprintf("%s_%s", name, field)],

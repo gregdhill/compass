@@ -109,7 +109,7 @@ func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerP
 // Render reads a file and templates it according to the provided functions
 func Render(name string, input util.Values, k8s *kube.K8s) ([]byte, error) {
 	funcs := template.FuncMap{
-		"getDigest":     docker.GetImageHash,
+		"getDigest":     docker.GetImageDigest,
 		"fromConfigMap": k8s.FromConfigMap,
 		"fromSecret":    k8s.FromSecret,
 		"parseJSON":     kube.ParseJSON,
