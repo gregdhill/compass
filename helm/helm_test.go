@@ -12,26 +12,26 @@ import (
 
 func newTestChart() Chart {
 	return Chart{
-		Name:       "burrow",
-		Repository: "stable",
-		Version:    "",
-		Release:    "test-release",
-		Namespace:  "test-namespace",
-		Tiller:     NewFakeClient(),
+		Name:      "stable/burrow",
+		Version:   "",
+		Release:   "test-release",
+		Namespace: "test-namespace",
+		Tiller:    NewFakeClient(),
 	}
 }
 
 func TestDownloadChart(t *testing.T) {
-	b := NewFakeClient()
+	cli := NewFakeClient()
+
 	dl := downloader.ChartDownloader{
-		HelmHome: b.envset.Home,
-		Getters:  getter.All(b.envset),
+		HelmHome: cli.envset.Home,
+		Getters:  getter.All(cli.envset),
 	}
 
-	_, err := downloadChart("fake/chart", "", b.envset)
+	_, err := downloadChart("fake/chart", "", cli.envset)
 	assert.Error(t, err, "repo fake not found")
 
-	_, err = downloadChart("stable/burrow", "", b.envset)
+	_, err = downloadChart("stable/burrow", "", cli.envset)
 	assert.NoError(t, err)
 
 	url, _, _ := dl.ResolveChartVersion("stable/burrow", "1.0.0")
@@ -39,43 +39,43 @@ func TestDownloadChart(t *testing.T) {
 }
 
 func TestReleaseStatus(t *testing.T) {
-	c := newTestChart()
+	chart := newTestChart()
 
-	_, err := c.Status()
+	_, err := chart.Status()
 	assert.Error(t, err, "release: \"test-release\" not found")
 
-	_, err = c.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release))
+	_, err = chart.client.InstallRelease(chart.Name, chart.Namespace, helm.ReleaseName(chart.Release))
 	assert.NoError(t, err)
 }
 
 func TestDeleteChart(t *testing.T) {
-	c := newTestChart()
+	chart := newTestChart()
 
-	err := c.Delete()
+	err := chart.Delete()
 	assert.Error(t, err, "release: \"test-release\" not found")
 
-	_, err = c.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release))
+	_, err = chart.client.InstallRelease(chart.Name, chart.Namespace, helm.ReleaseName(chart.Release))
 	assert.NoError(t, err)
 
-	err = c.Delete()
+	err = chart.Delete()
 	assert.NoError(t, err)
 }
 
 func TestInstallChart(t *testing.T) {
-	c := newTestChart()
-	c.Install()
-	out, _ := c.Status()
+	chart := newTestChart()
+	chart.Install()
+	out, _ := chart.Status()
 	assert.Equal(t, true, out)
 }
 
 func TestUpgradeChart(t *testing.T) {
-	c := newTestChart()
+	chart := newTestChart()
 
-	_, err := c.Tiller.client.InstallRelease(c.Name, c.Namespace, helm.ReleaseName(c.Release), helm.InstallWait(true))
+	_, err := chart.Tiller.client.InstallRelease(chart.Name, chart.Namespace, helm.ReleaseName(chart.Release), helm.InstallWait(true))
 	assert.NoError(t, err)
 
-	c.Upgrade()
-	out, err := c.Status()
+	chart.Upgrade()
+	out, err := chart.Status()
 	assert.NoError(t, err)
 	assert.Equal(t, true, out)
 }

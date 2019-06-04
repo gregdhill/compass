@@ -3,7 +3,6 @@ package core
 import (
 	"bytes"
 	"io/ioutil"
-	"log"
 	"os"
 	"sync"
 	"text/template"
@@ -12,6 +11,8 @@ import (
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
+	log "github.com/sirupsen/logrus"
+	"gopkg.in/yaml.v2"
 )
 
 // Stages represents the complete workflow.
@@ -72,7 +73,7 @@ func (stg *Stages) Lint(in util.Values) (err error) {
 	return nil
 }
 
-// Connect links all of our stages to their required resources
+// Connect links all of our stages to their required resources and pre-renders their input
 func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerPort string) (func(), error) {
 	tiller := helm.NewClient(k8s, tillerName, tillerPort)
 	closer := func() {
@@ -87,21 +88,28 @@ func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerP
 			stg.Connect(tiller)
 		}
 
-		out, err := Template(stg.Input, input, k8s)
+		out, err := Render(stg.Template, input, k8s)
 		if err != nil {
 			return closer, err
 		}
+		if stg.Values != nil {
+			vals, err := yaml.Marshal(stg.Values)
+			if err != nil {
+				return closer, err
+			}
+			out = append(out, vals...)
+		}
+
 		stg.SetInput(out)
 	}
 
 	return closer, nil
 }
 
-// Template reads a file and renders it according to the provided functions
-func Template(name string, input util.Values, k8s *kube.K8s) ([]byte, error) {
+// Render reads a file and templates it according to the provided functions
+func Render(name string, input util.Values, k8s *kube.K8s) ([]byte, error) {
 	funcs := template.FuncMap{
 		"getDigest":     docker.GetImageHash,
-		"getAuth":       docker.GetAuthToken,
 		"fromConfigMap": k8s.FromConfigMap,
 		"fromSecret":    k8s.FromSecret,
 		"parseJSON":     kube.ParseJSON,
@@ -131,7 +139,7 @@ func Template(name string, input util.Values, k8s *kube.K8s) ([]byte, error) {
 }
 
 // Destroy deletes each stage in reverse order
-func (stg *Stages) Destroy(input util.Values, force, verbose bool) {
+func (stg *Stages) Destroy(input util.Values, force bool) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -141,14 +149,15 @@ func (stg *Stages) Destroy(input util.Values, force, verbose bool) {
 
 	for key, stage := range stages {
 		go func(stg *Stage, key string) {
+			logger := log.WithField("kind", stage.Kind)
 			defer wg.Done()
-			stg.Backward(key, input, d, force, verbose)
+			stg.Backward(logger, key, input, d, force)
 		}(stage, key)
 	}
 }
 
 // Run processes each stage in the pipeline
-func (stg *Stages) Run(input util.Values, force, verbose bool) {
+func (stg *Stages) Run(input util.Values, force bool) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -156,16 +165,18 @@ func (stg *Stages) Run(input util.Values, force, verbose bool) {
 	wg.Add(len(stages))
 	d := stg.BuildDepends(false)
 
+	log.Infoln("Starting workflow...")
 	for key, stage := range stages {
 		go func(stage *Stage, key string) {
+			logger := log.WithField("kind", stage.Kind)
 			defer wg.Done()
-			stage.Forward(key, input, d, force, verbose)
+			stage.Forward(logger, key, input, d, force)
 		}(stage, key)
 	}
 }
 
 // Until creates single resource and dependencies
-func (stg *Stages) Until(input util.Values, force, verbose bool, target string) {
+func (stg *Stages) Until(input util.Values, force bool, target string) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
@@ -178,14 +189,16 @@ func (stg *Stages) Until(input util.Values, force, verbose bool, target string) 
 
 	wg.Add(len(stages[target].Depends) + 1)
 	go func(stage *Stage, key string) {
+		logger := log.WithField("kind", stage.Kind)
 		defer wg.Done()
-		stage.Forward(key, input, d, force, verbose)
+		stage.Forward(logger, key, input, d, force)
 	}(stages[target], target)
 
 	for _, dep := range stages[target].Depends {
 		go func(stage *Stage, key string) {
+			logger := log.WithField("kind", stage.Kind)
 			defer wg.Done()
-			stage.Forward(key, input, d, force, verbose)
+			stage.Forward(logger, key, input, d, force)
 		}(stages[dep], dep)
 	}
 }

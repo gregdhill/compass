@@ -2,20 +2,20 @@ package helm
 
 import (
 	"fmt"
-	"log"
-	"net/url"
 	"os"
 	"strconv"
 
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
 	"github.com/phayes/freeport"
+	log "github.com/sirupsen/logrus"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/downloader"
 	"k8s.io/helm/pkg/getter"
 	"k8s.io/helm/pkg/helm"
 	helm_env "k8s.io/helm/pkg/helm/environment"
 	"k8s.io/helm/pkg/helm/helmpath"
+	"k8s.io/helm/pkg/proto/hapi/chart"
 )
 
 // Tiller represents a helm client and open connection to tiller
@@ -52,26 +52,28 @@ func (hl *Tiller) Close() {
 
 // Chart comprises the helm release
 type Chart struct {
-	Name       string `yaml:"name"`       // name of chart
-	Repository string `yaml:"repository"` // chart repository
-	Version    string `yaml:"version"`    // chart version
-	Release    string `yaml:"release"`    // release name
-	Namespace  string `yaml:"namespace"`  // namespace
-	Timeout    int64  `yaml:"timeout"`    // install / upgrade wait time
-	Object     []byte
+	Name      string `yaml:"name"`      // name of chart
+	Version   string `yaml:"version"`   // chart version
+	Release   string `yaml:"release"`   // release name
+	Namespace string `yaml:"namespace"` // namespace
+	Timeout   int64  `yaml:"timeout"`   // install / upgrade wait time
+	Object    []byte
 	*Tiller
 }
 
 // Lint validates the chart for required values
 // some of which are parsed from values
 func (c *Chart) Lint(key string, in *util.Values) error {
+	c.Version = in.Cascade(key, "version", c.Version)
 	if c.Namespace = in.Cascade(key, "namespace", c.Namespace); c.Namespace == "" {
 		return fmt.Errorf("namespace for %s is empty", key)
 	}
 	if c.Release = in.Cascade(key, "release", c.Release); c.Release == "" {
 		return fmt.Errorf("release for %s is empty", key)
 	}
-	c.Version = in.Cascade(key, "version", c.Version)
+	if c.Name == "" {
+		return fmt.Errorf("chart name required in the format repo/app")
+	}
 	return nil
 }
 
@@ -90,37 +92,54 @@ func (c *Chart) Connect(bridge interface{}) {
 	c.Tiller = bridge.(*Tiller)
 }
 
-func downloadChart(location, version string, settings helm_env.EnvSettings) (string, error) {
+func downloadChart(location, version string, settings helm_env.EnvSettings) (*chart.Chart, error) {
+	if util.IsDir(location) {
+		log.Infof("Using local chart: %s", location)
+		return chartutil.LoadDir(location)
+	}
+
+	log.Infof("Downloading: %s", location)
 	dl := downloader.ChartDownloader{
 		HelmHome: settings.Home,
 		Getters:  getter.All(settings),
 	}
 	if _, err := os.Stat(settings.Home.Archive()); os.IsNotExist(err) {
-		fmt.Printf("creating directory: %s\n", settings.Home.Archive())
+		fmt.Printf("Creating directory: %s\n", settings.Home.Archive())
 		os.MkdirAll(settings.Home.Archive(), 0744)
 	}
 
 	chart, _, err := dl.DownloadTo(location, version, settings.Home.Archive())
-	return chart, err
+	if err != nil {
+		return nil, err
+	}
+
+	return chartutil.Load(chart)
+}
+
+// Status returns the status of a release
+func (c *Chart) Status() (bool, error) {
+	out, err := c.client.ReleaseStatus(c.Release)
+	if err != nil || out == nil {
+		return false, err
+	}
+	statusCode := out.GetInfo().Status.Code.String()
+	if statusCode == "PENDING_INSTALL" {
+		c.Delete()
+	}
+	return true, nil
 }
 
 // Install deploys a helm chart
 func (c *Chart) Install() error {
-	name := fmt.Sprintf("%s/%s", c.Repository, c.Name)
-
-	crt, err := downloadChart(name, c.Version, c.envset)
+	reqChart, err := downloadChart(c.Name, c.Version, c.envset)
 	if err != nil {
 		return err
 	}
 
-	requestedChart, err := chartutil.Load(crt)
-	if err != nil {
-		return err
-	}
-
-	chartutil.LoadRequirements(requestedChart)
+	log.Infof("Release: %s", c.Release)
+	chartutil.LoadRequirements(reqChart)
 	_, err = c.client.InstallReleaseFromChart(
-		requestedChart,
+		reqChart,
 		c.Namespace,
 		helm.ReleaseName(c.Release),
 		helm.InstallWait(true),
@@ -136,17 +155,15 @@ func (c *Chart) Install() error {
 
 // Upgrade tells tiller to upgrade a helm chart
 func (c *Chart) Upgrade() error {
-	_, _ = url.ParseRequestURI(c.Repository)
-	name := fmt.Sprintf("%s/%s", c.Repository, c.Name)
-
-	crt, err := downloadChart(name, c.Version, c.envset)
+	reqChart, err := downloadChart(c.Name, c.Version, c.envset)
 	if err != nil {
 		return err
 	}
 
-	_, err = c.client.UpdateRelease(
+	log.Infof("Release: %s", c.Release)
+	_, err = c.client.UpdateReleaseFromChart(
 		c.Release,
-		crt,
+		reqChart,
 		helm.UpgradeTimeout(c.Timeout),
 		helm.UpdateValueOverrides(c.Object),
 		helm.UpgradeDryRun(false),
@@ -168,20 +185,7 @@ func (c *Chart) Delete() error {
 	return err
 }
 
-// Status returns the status of a release
-func (c *Chart) Status() (bool, error) {
-	out, err := c.client.ReleaseStatus(c.Release)
-	if err != nil || out == nil {
-		return false, err
-	}
-	statusCode := out.GetInfo().Status.Code.String()
-	if statusCode == "PENDING_INSTALL" {
-		c.Delete()
-	}
-	return true, nil
-}
-
-// NewFakeTiller establishes a fake helm client
+// NewFakeClient establishes a fake helm client
 func NewFakeClient() *Tiller {
 	hl := Tiller{}
 	var client helm.FakeClient

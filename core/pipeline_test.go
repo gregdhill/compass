@@ -23,8 +23,7 @@ var testData = `
 test:
     kind: helm
     timeout: 2400
-    name: chart
-    repository: stable
+    name: stable/chart
     forget: true
 `
 
@@ -32,6 +31,5 @@ func TestUnmarshal(t *testing.T) {
 	pipe := Stages{}
 	err := yaml.Unmarshal([]byte(testData), &pipe)
 	assert.NoError(t, err)
-	assert.Equal(t, "chart", pipe["test"].Resource.(*helm.Chart).Name)
-	assert.Equal(t, "stable", pipe["test"].Resource.(*helm.Chart).Repository)
+	assert.Equal(t, "stable/chart", pipe["test"].Resource.(*helm.Chart).Name)
 }

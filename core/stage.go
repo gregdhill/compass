@@ -2,7 +2,6 @@ package core
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"os/exec"
 	"strings"
@@ -11,6 +10,7 @@ import (
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
+	log "github.com/sirupsen/logrus"
 )
 
 // Jobs represent any shell scripts
@@ -23,10 +23,11 @@ type Jobs struct {
 type Stage struct {
 	Depends  []string    `yaml:"depends"`  // dependencies
 	Forget   bool        `yaml:"forget"`   // install only
-	Input    string      `yaml:"input"`    // template file
+	Template string      `yaml:"template"` // template file
 	Jobs     Jobs        `yaml:"jobs"`     // bash jobs
 	Kind     string      `yaml:"kind"`     // type of deploy
 	Requires util.Values `yaml:"requires"` // env requirements
+	Values   interface{} `yaml:"values"`   // yaml values
 	Resource
 }
 
@@ -36,18 +37,25 @@ func (stg *Stage) UnmarshalYAML(unmarshal func(interface{}) error) error {
 	if err := unmarshal(&this); err != nil {
 		return err
 	}
-	mapstructure.Decode(this, stg)
+
+	if err := mapstructure.Decode(this, stg); err != nil {
+		return err
+	}
 
 	switch this["kind"] {
 	case "kube", "kubernetes":
 		var km kube.Manifest
 		km.Timeout = 300
-		mapstructure.Decode(this, &km)
+		if err := mapstructure.Decode(this, &km); err != nil {
+			return err
+		}
 		stg.Resource = &km
 	case "helm":
 		var hc helm.Chart
 		hc.Timeout = 300
-		mapstructure.Decode(this, &hc)
+		if err := mapstructure.Decode(this, &hc); err != nil {
+			return err
+		}
 		stg.Resource = &hc
 	default:
 		return fmt.Errorf("kind '%s' unknown", this["kind"])
@@ -68,14 +76,14 @@ type Resource interface {
 	GetInput() []byte
 }
 
-func shellJobs(values []string, jobs []string, verbose bool) {
+func shellJobs(values []string, jobs []string) {
 	for _, command := range jobs {
-		log.Printf("running job: %s\n", command)
+		log.Infof("running job: %s\n", command)
 		args := strings.Fields(command)
 		cmd := exec.Command(args[0], args[1:]...)
 		cmd.Env = append(values, os.Environ()...)
 		stdout, err := cmd.Output()
-		if verbose && stdout != nil {
+		if stdout != nil {
 			fmt.Println(string(stdout))
 		}
 		if err != nil {
@@ -96,73 +104,74 @@ func checkRequires(values util.Values, reqs util.Values) error {
 }
 
 // Backward pass over the graph
-func (stg *Stage) Backward(key string, global util.Values, deps *Depends, force, verbose bool) error {
+func (stg *Stage) Backward(logger *log.Entry, key string, global util.Values, deps *Depends, force bool) error {
 	defer deps.Complete(stg.Depends...) // signal its dependencies once finished
 
 	// only continue if required variables are set
 	if err := checkRequires(global, stg.Requires); err != nil {
-		log.Printf("[%s] ignoring: %s: %s\n", stg.Kind, key, err.Error())
+		logger.Infof("Ignoring: %s: %s", key, err.Error())
 		return nil
 	}
 
 	// don't delete by default
 	if !force && stg.Forget {
-		log.Printf("[%s] ignoring: %s\n", stg.Kind, key)
-		return fmt.Errorf("[%s] not deleting stage %s", stg.Kind, key)
+		logger.Infof("Ignoring: %s", key)
+		return fmt.Errorf("Not deleting stage %s", key)
 	}
 
 	// wait for dependants to delete first
 	deps.Wait(key)
-	log.Printf("[%s] deleting: %s\n", stg.Kind, key)
+	logger.Infof("Deleting: %s", key)
 
 	return stg.Delete()
 }
 
 // Forward pass over the graph
-func (stg *Stage) Forward(key string, global util.Values, deps *Depends, force, verbose bool) error {
+func (stg *Stage) Forward(logger *log.Entry, key string, global util.Values, deps *Depends, force bool) error {
 	defer deps.Complete(key) // signal this finished
 
 	// stop if already installed and abandoned
 	installed, _ := stg.Status()
 	if installed && !force && stg.Forget {
-		log.Printf("[%s] ignoring: %s\n", stg.Kind, key)
+		logger.Infof("Ignoring: %s", key)
 		return nil
 	}
 
 	local := global.Duplicate()
 	shellVars := local.ToSlice()
 	if err := checkRequires(local, stg.Requires); err != nil {
-		log.Printf("[%s] ignoring: %s: %s\n", stg.Kind, key, err.Error())
+		logger.Infof("Ignoring: %s: %s", key, err.Error())
 		return nil
 	}
 
 	// wait for dependencies
 	deps.Wait(stg.Depends...)
 
-	shellJobs(shellVars, stg.Jobs.Before, verbose)
-	defer shellJobs(shellVars, stg.Jobs.After, verbose)
+	shellJobs(shellVars, stg.Jobs.Before)
+	defer shellJobs(shellVars, stg.Jobs.After)
 
-	if obj := stg.GetInput(); obj != nil && verbose {
+	if obj := stg.GetInput(); obj != nil {
+		logger.Info("Computed:")
 		fmt.Println(string(obj))
 	}
 
 	installed, err := stg.Status()
 	if !installed {
-		log.Printf("[%s] installing: %s\n", stg.Kind, key)
+		logger.Infof("Installing: %s", key)
 		if err := stg.Install(); err != nil {
-			log.Fatalf("[%s] failed to install %s: %s\n", stg.Kind, key, err)
+			logger.Fatalf("Failed to install %s: %s", key, err)
 			return err
 		}
-		log.Printf("[%s] installed: %s\n", stg.Kind, key)
+		logger.Infof("Installed: %s\n", key)
 		return nil
 	}
 
 	// upgrade if already installed
-	log.Printf("[%s] upgrading: %s\n", stg.Kind, key)
+	logger.Infof("Upgrading: %s", key)
 	if err = stg.Upgrade(); err != nil {
-		log.Fatalf("[%s] failed to upgrade %s: %s\n", stg.Kind, key, err)
+		logger.Fatalf("Failed to upgrade %s: %s", key, err)
 		return err
 	}
-	log.Printf("[%s] upgraded: %s\n", stg.Kind, key)
+	logger.Infof("Upgraded: %s", key)
 	return nil
 }

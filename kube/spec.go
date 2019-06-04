@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/monax/compass/util"
+	log "github.com/sirupsen/logrus"
 	v1batch "k8s.io/api/batch/v1"
 	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -53,6 +54,7 @@ func (m *Manifest) Connect(k8s interface{}) {
 func (m *Manifest) buildObjects() ([]runtime.Object, error) {
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	objs := bytes.Split(m.Object, []byte("---"))
+	log.Infof("Given %d specifications", len(objs))
 	var specs []runtime.Object
 	for _, obj := range objs {
 		spec, _, err := decode(obj, nil, nil)
@@ -67,9 +69,9 @@ func (m *Manifest) buildObjects() ([]runtime.Object, error) {
 type action string
 
 const (
+	status  action = "status"
 	install action = "install"
 	upgrade action = "upgrade"
-	status  action = "status"
 	delete  action = "delete"
 )
 
@@ -119,8 +121,10 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 	if err == nil {
 		switch def := spec.(type) {
 		case *v1batch.Job:
+			log.Infof("Waiting for job: %s", def.Name)
 			err = m.waitJob(m.Namespace, def.GetName(), m.Remove, m.Timeout)
 		case *v1core.Pod:
+			log.Infof("Waiting for pod: %s", def.Name)
 			err = m.waitPod(m.Namespace, def.GetName(), m.Remove, m.Timeout)
 		}
 	}
@@ -144,6 +148,15 @@ func (m *Manifest) Workflow(do action) error {
 	return nil
 }
 
+// Status returns true if the objects exists
+func (m *Manifest) Status() (bool, error) {
+	err := m.Workflow(status)
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 // Install the decoded kubernetes objects
 func (m *Manifest) Install() error {
 	if m.Namespace == "" {
@@ -156,15 +169,6 @@ func (m *Manifest) Install() error {
 // Upgrade the decoded kubernetes objects
 func (m *Manifest) Upgrade() error {
 	return m.Workflow(upgrade)
-}
-
-// Status returns true if the objects exists
-func (m *Manifest) Status() (bool, error) {
-	err := m.Workflow(status)
-	if err != nil {
-		return false, err
-	}
-	return true, nil
 }
 
 // Delete the decoded kubernetes objects

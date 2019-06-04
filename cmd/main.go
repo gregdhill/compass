@@ -1,17 +1,18 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/monax/compass/core"
+	"github.com/monax/compass/docker"
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
+	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 )
@@ -20,9 +21,11 @@ var (
 	k8s        *kube.K8s
 	templates  []string
 	values     map[string]string
+	builds     map[string]string
+	tags       map[string]string
 	destroy    bool
 	force      bool
-	verbose    bool
+	buildCtx   string
 	tillerName string
 	tillerPort string
 	until      string
@@ -30,17 +33,21 @@ var (
 )
 
 var rootCmd = &cobra.Command{
-	Use:   "compass",
-	Short: "Kubernetes & Helm",
-	Long:  `Deploy a templated pipeline or install a single manifest. If no command given, output values as JSON.`,
+	Use:          "compass",
+	Short:        "Kubernetes & Helm",
+	Long:         `Deploy a templated pipeline or install a single manifest. If no command given, output values as JSON.`,
+	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		k8s = kube.NewClient()
+		if values == nil {
+			values = make(map[string]string)
+		}
 		vals := util.Values(values) // explicit cli inputs
 
 		// additional template files
 		for _, i := range templates {
 			if err = vals.FromTemplate(i, func(name string, input util.Values) ([]byte, error) {
-				return core.Template(name, input, k8s)
+				return core.Render(name, input, k8s)
 			}); err != nil {
 				return fmt.Errorf("couldn't attach import %s: %v", i, err)
 			}
@@ -62,24 +69,46 @@ var rootCmd = &cobra.Command{
 	},
 }
 
-var flowCmd = &cobra.Command{
-	Use:   "flow",
-	Short: "Run the given workflow",
-	Args:  cobra.ExactArgs(1),
+var runCmd = &cobra.Command{
+	Use:          "run",
+	Short:        "Run the given workflow",
+	SilenceUsage: true,
+	Args:         cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		spec := args[0]
+
+		// do builds and fetch tags
+		ctx := context.Background()
+		shas := make(map[string]string, len(builds)+len(tags))
+		for k, v := range builds {
+			shas[k], err = docker.BuildAndPush(ctx, buildCtx, v)
+			if err != nil {
+				return err
+			}
+		}
+		for k, v := range tags {
+			shas[k], err = docker.GetImageHash(v)
+			if err != nil {
+				return err
+			}
+		}
+
+		// we want those digests before we
+		// template the main workflow
+		genVals := util.Values(values)
+		genVals.Append(shas)
 
 		// populate workflow with stages
 		workflow := core.Stages{}
 		var data []byte
-		if data, err = ioutil.ReadFile(spec); err != nil {
+		if data, err = core.Render(spec, genVals, k8s); err != nil {
 			return err
 		}
 		if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
 			return err
 		}
 
-		closer, err := workflow.Connect(k8s, values, tillerName, tillerPort)
+		closer, err := workflow.Connect(k8s, genVals, tillerName, tillerPort)
 		defer closer()
 		if err != nil {
 			return err
@@ -92,30 +121,29 @@ var flowCmd = &cobra.Command{
 			os.Exit(1)
 		}()
 
-		if err = workflow.Lint(values); err != nil {
+		if err = workflow.Lint(genVals); err != nil {
 			return err
 		}
 
 		force := force
-		verbose := verbose
 		if len(workflow) == 0 {
 			return fmt.Errorf("nothing to run")
 		}
 
 		// reverse workflow
 		if destroy {
-			workflow.Destroy(values, force, verbose)
+			workflow.Destroy(genVals, force)
 			return nil
 		}
 
 		// stop at desired key
 		if until != "" {
-			workflow.Until(values, force, verbose, until)
+			workflow.Until(genVals, force, until)
 			return nil
 		}
 
 		// run full workflow
-		workflow.Run(values, force, verbose)
+		workflow.Run(genVals, force)
 		return nil
 	},
 }
@@ -126,8 +154,7 @@ var kubeCmd = &cobra.Command{
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		spec := args[0]
-		k8s := kube.NewClient()
-		out, err := core.Template(spec, values, k8s)
+		out, err := core.Render(spec, values, k8s)
 		if err != nil {
 			return err
 		}
@@ -143,24 +170,27 @@ var kubeCmd = &cobra.Command{
 			return err
 		}
 
-		log.Println("Deployed successfully")
+		log.Info("Deployed successfully")
 		return nil
 	},
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringArrayVarP(&templates, "template", "t", nil, "YAML files with key:value mappings")
-	rootCmd.PersistentFlags().StringToStringVar(&values, "value", nil, "extra values to append to the pipeline")
-	rootCmd.PersistentFlags().BoolVarP(&verbose, "verbose", "v", false, "show verbose debug information")
+	rootCmd.PersistentFlags().StringArrayVarP(&templates, "template", "t", nil, "file with key:value mappings (YAML)")
+	rootCmd.PersistentFlags().StringToStringVar(&values, "value", nil, "explicit key:value pairs")
+	rootCmd.PersistentFlags().StringToStringVar(&builds, "build", nil, "build specified dockerfile")
+	rootCmd.PersistentFlags().StringToStringVar(&tags, "tag", nil, "get digest of image")
 
-	flowCmd.Flags().BoolVarP(&destroy, "destroy", "d", false, "purge all stages, top-down")
-	flowCmd.Flags().BoolVarP(&force, "force", "f", false, "force install / upgrade / delete")
-	flowCmd.Flags().StringVarP(&tillerName, "tillerName", "n", "kube-system", "namespace to search for Tiller")
-	flowCmd.Flags().StringVarP(&tillerPort, "tillerPort", "p", "44134", "port to connect on Tiller")
-	flowCmd.Flags().StringVarP(&until, "until", "u", "", "deploy stage and dependencies")
-	rootCmd.AddCommand(flowCmd)
+	runCmd.Flags().StringVarP(&buildCtx, "context", "c", ".", "context for building and packaging")
+	runCmd.Flags().BoolVarP(&destroy, "destroy", "d", false, "purge all stages, top-down")
+	runCmd.Flags().BoolVarP(&force, "force", "f", false, "force install / upgrade / delete")
+	runCmd.Flags().StringVarP(&tillerName, "tillerName", "n", "kube-system", "namespace to search for Tiller")
+	runCmd.Flags().StringVarP(&tillerPort, "tillerPort", "p", "44134", "port to connect on Tiller")
+	runCmd.Flags().StringVarP(&until, "until", "u", "", "only deploy stage and dependencies")
+	rootCmd.AddCommand(runCmd)
 
-	kubeCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace to deploy to")
+	kubeCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace to deploy")
+	kubeCmd.MarkFlagRequired("namespace")
 	rootCmd.AddCommand(kubeCmd)
 }
 

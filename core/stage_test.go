@@ -6,8 +6,9 @@ import (
 
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
-	"github.com/stretchr/testify/assert"
 	"github.com/monax/compass/util"
+	"github.com/sirupsen/logrus"
+	"github.com/stretchr/testify/assert"
 )
 
 func newTestChart() *Stage {
@@ -15,11 +16,10 @@ func newTestChart() *Stage {
 		Forget: false,
 		Kind:   "helm",
 		Resource: &helm.Chart{
-			Name:       "burrow",
-			Repository: "stable",
-			Version:    "",
-			Namespace:  "test-namespace",
-			Release:    "test-release",
+			Name:      "stable/burrow",
+			Version:   "",
+			Namespace: "test-namespace",
+			Release:   "test-release",
 		},
 	}
 	stg.Connect(helm.NewFakeClient())
@@ -59,10 +59,10 @@ func newTestManifest() *Stage {
 
 func TestShellJobs(t *testing.T) {
 	jobs := []string{"echo hello"}
-	shellJobs(nil, jobs, true)
+	shellJobs(nil, jobs)
 
 	jobs = []string{"error 1"}
-	assert.Panics(t, func() { shellJobs(nil, jobs, false) })
+	assert.Panics(t, func() { shellJobs(nil, jobs) })
 }
 
 func TestCreateDestroyChart(t *testing.T) {
@@ -73,11 +73,12 @@ func TestCreateDestroyChart(t *testing.T) {
 	w.Add(1)
 	wgs["test"] = &w
 
+	logger := logrus.New().WithField("kind", chart.Kind)
 	values := make(util.Values, 1)
-	err := chart.Forward("test", values, &wgs, false, false)
+	err := chart.Forward(logger, "test", values, &wgs, false)
 	assert.NoError(t, err)
 
-	err = chart.Backward("test", values, &wgs, false, false)
+	err = chart.Backward(logger, "test", values, &wgs, false)
 	assert.NoError(t, err)
 }
 
@@ -89,10 +90,11 @@ func TestCreateDestroyManifest(t *testing.T) {
 	w.Add(1)
 	wgs["test"] = &w
 
+	logger := logrus.New().WithField("kind", man.Kind)
 	values := make(util.Values, 1)
-	err := man.Forward("test", values, &wgs, false, false)
+	err := man.Forward(logger, "test", values, &wgs, false)
 	assert.NoError(t, err)
 
-	err = man.Backward("test", values, &wgs, false, false)
+	err = man.Backward(logger, "test", values, &wgs, false)
 	assert.NoError(t, err)
 }

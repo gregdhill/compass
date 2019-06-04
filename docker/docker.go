@@ -1,66 +1,57 @@
 package docker
 
 import (
-	"encoding/base64"
-	"encoding/json"
-	"fmt"
-	"io/ioutil"
-	"net/http"
+	"os"
 	"strings"
+
+	"github.com/docker/cli/cli/config"
+	"github.com/docker/docker/api/types"
+	"github.com/genuinetools/reg/registry"
 )
 
-func cleanInput(in string) (out string) {
-	out = strings.Replace(in, "v2", "", -1)
-	out = strings.Trim(out, "/")
-	if (out[0] == '\'' && out[len(out)-1] == '\'') ||
-		(out[0] == '"' && out[len(out)-1] == '"') {
-		out = out[1 : len(out)-1]
+func getAuth(ref string) (types.AuthConfig, error) {
+	server := strings.Split(ref, "/")[0]
+	acs, err := config.LoadDefaultConfigFile(os.Stderr).GetAllCredentials()
+	if err != nil {
+		return types.AuthConfig{}, err
 	}
-	return
+
+	return types.AuthConfig(acs[server]), nil
 }
 
-// GetAuthToken fetches the docker api auth url and returns a valid token
-func GetAuthToken(url string) (token string, err error) {
-	resp, err := http.Get(url)
+func getDigest(ref string, conf types.AuthConfig) (string, error) {
+	server := strings.Split(ref, "/")[0]
+	reg, err := registry.New(conf, registry.Opt{
+		Domain:   server,
+		SkipPing: true, // otherwise this is slow
+	})
 	if err != nil {
-		return token, fmt.Errorf("failed to get url %s : %v", url, err)
+		return "", err
 	}
-	body, err := ioutil.ReadAll(resp.Body)
-	defer resp.Body.Close()
+
+	img, err := registry.ParseImage(ref)
 	if err != nil {
-		return token, fmt.Errorf("failed to read response body: %v", err)
+		return "", err
 	}
-	auth := make(map[string]interface{})
-	err = json.Unmarshal(body, &auth)
+
+	dig, err := reg.Digest(img)
 	if err != nil {
-		return token, fmt.Errorf("failed to unmarshal response body: %v", err)
+		return "", err
 	}
-	return auth["token"].(string), nil
+
+	return dig.Encoded(), nil
 }
 
-// GetImageHash fetches the latest image digest for the given tag
-func GetImageHash(server, repo, tag, token string) (digest string, err error) {
-	server = cleanInput(server)
-	repo = cleanInput(repo)
-	tag = cleanInput(tag)
+// GetImageHash fetches the latest image digest for the given ref (server/app:tag)
+func GetImageHash(ref string) (string, error) {
+	if err := checkTag(ref); err != nil {
+		return "", err
+	}
 
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", fmt.Sprintf("%s/v2/%s/manifests/%s", server, repo, tag), nil)
+	authConfig, err := getAuth(ref)
 	if err != nil {
-		return digest, fmt.Errorf("failed to get digest for %s:%s : %v", repo, tag, err)
+		authConfig = types.AuthConfig{}
 	}
 
-	req.Header.Add("Authorization", fmt.Sprintf("Bearer %s", token))
-	auth := base64.StdEncoding.EncodeToString([]byte(token))
-	req.Header.Add("Authorization", fmt.Sprintf("Basic %s", auth))
-	req.Header.Add("Accept", "application/vnd.docker.distribution.manifest.v2+json")
-	resp, err := client.Do(req)
-	if err != nil {
-		return digest, fmt.Errorf("failed to get digest for %s:%s : %v", repo, tag, err)
-	}
-	if resp.StatusCode != 200 {
-		return digest, fmt.Errorf("failed to get digest for %s:%s : permission denied (%d)", repo, tag, resp.StatusCode)
-	}
-
-	return strings.Split(resp.Header["Docker-Content-Digest"][0], ":")[1], nil
+	return getDigest(ref, authConfig)
 }
