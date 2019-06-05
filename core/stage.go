@@ -103,10 +103,8 @@ func checkRequires(values util.Values, reqs util.Values) error {
 	return nil
 }
 
-// Backward pass over the graph
-func (stg *Stage) Backward(logger *log.Entry, key string, global util.Values, deps *Depends, force bool) error {
-	defer deps.Complete(stg.Depends...) // signal its dependencies once finished
-
+// Destroy removes resource
+func (stg *Stage) Destroy(logger *log.Entry, key string, global util.Values, force bool) error {
 	// only continue if required variables are set
 	if err := checkRequires(global, stg.Requires); err != nil {
 		logger.Infof("Ignoring: %s: %s", key, err.Error())
@@ -119,17 +117,13 @@ func (stg *Stage) Backward(logger *log.Entry, key string, global util.Values, de
 		return fmt.Errorf("Not deleting stage %s", key)
 	}
 
-	// wait for dependants to delete first
-	deps.Wait(key)
 	logger.Infof("Deleting: %s", key)
 
 	return stg.Delete()
 }
 
-// Forward pass over the graph
-func (stg *Stage) Forward(logger *log.Entry, key string, global util.Values, deps *Depends, force bool) error {
-	defer deps.Complete(key) // signal this finished
-
+// Create installs / upgrades resource
+func (stg *Stage) Create(logger *log.Entry, key string, global util.Values, force bool) error {
 	// stop if already installed and abandoned
 	installed, _ := stg.Status()
 	if installed && !force && stg.Forget {
@@ -144,14 +138,10 @@ func (stg *Stage) Forward(logger *log.Entry, key string, global util.Values, dep
 		return nil
 	}
 
-	// wait for dependencies
-	deps.Wait(stg.Depends...)
-
 	shellJobs(shellVars, stg.Jobs.Before)
 	defer shellJobs(shellVars, stg.Jobs.After)
 
 	if obj := stg.GetInput(); obj != nil {
-		logger.Info("Computed:")
 		fmt.Println(string(obj))
 	}
 
@@ -162,7 +152,7 @@ func (stg *Stage) Forward(logger *log.Entry, key string, global util.Values, dep
 			logger.Fatalf("Failed to install %s: %s", key, err)
 			return err
 		}
-		logger.Infof("Installed: %s\n", key)
+		logger.Infof("Installed: %s", key)
 		return nil
 	}
 

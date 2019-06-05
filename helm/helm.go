@@ -18,6 +18,12 @@ import (
 	"k8s.io/helm/pkg/proto/hapi/chart"
 )
 
+var (
+	helmLogger = log.WithFields(log.Fields{
+		"kind": "helm",
+	})
+)
+
 // Tiller represents a helm client and open connection to tiller
 type Tiller struct {
 	client helm.Interface
@@ -64,11 +70,11 @@ type Chart struct {
 // Lint validates the chart for required values
 // some of which are parsed from values
 func (c *Chart) Lint(key string, in *util.Values) error {
-	c.Version = in.Cascade(key, "version", c.Version)
-	if c.Namespace = in.Cascade(key, "namespace", c.Namespace); c.Namespace == "" {
+	c.Version = in.Cascade(c.Version, key, "version")
+	if c.Namespace = in.Cascade(c.Namespace, key, "namespace"); c.Namespace == "" {
 		return fmt.Errorf("namespace for %s is empty", key)
 	}
-	if c.Release = in.Cascade(key, "release", c.Release); c.Release == "" {
+	if c.Release = in.Cascade(c.Release, key, "release"); c.Release == "" {
 		return fmt.Errorf("release for %s is empty", key)
 	}
 	if c.Name == "" {
@@ -94,11 +100,11 @@ func (c *Chart) Connect(bridge interface{}) {
 
 func downloadChart(location, version string, settings helm_env.EnvSettings) (*chart.Chart, error) {
 	if util.IsDir(location) {
-		log.Infof("Using local chart: %s", location)
+		helmLogger.Infof("Using local chart: %s", location)
 		return chartutil.LoadDir(location)
 	}
 
-	log.Infof("Downloading: %s", location)
+	helmLogger.Infof("Downloading: %s", location)
 	dl := downloader.ChartDownloader{
 		HelmHome: settings.Home,
 		Getters:  getter.All(settings),
@@ -136,7 +142,7 @@ func (c *Chart) Install() error {
 		return err
 	}
 
-	log.Infof("Release: %s", c.Release)
+	helmLogger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
 	chartutil.LoadRequirements(reqChart)
 	_, err = c.client.InstallReleaseFromChart(
 		reqChart,
@@ -160,7 +166,7 @@ func (c *Chart) Upgrade() error {
 		return err
 	}
 
-	log.Infof("Release: %s", c.Release)
+	helmLogger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
 	_, err = c.client.UpdateReleaseFromChart(
 		c.Release,
 		reqChart,

@@ -30,7 +30,7 @@ type Manifest struct {
 
 // Lint checks that our definition has a namespace
 func (m *Manifest) Lint(key string, in *util.Values) error {
-	if m.Namespace = in.Cascade(key, "namespace", m.Namespace); m.Namespace == "" {
+	if m.Namespace = in.Cascade(m.Namespace, key, "namespace"); m.Namespace == "" {
 		return fmt.Errorf("namespace for %s is empty", key)
 	}
 	return nil

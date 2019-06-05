@@ -1,7 +1,6 @@
 package core
 
 import (
-	"sync"
 	"testing"
 
 	"github.com/monax/compass/helm"
@@ -17,7 +16,6 @@ func newTestChart() *Stage {
 		Kind:   "helm",
 		Resource: &helm.Chart{
 			Name:      "stable/burrow",
-			Version:   "",
 			Namespace: "test-namespace",
 			Release:   "test-release",
 		},
@@ -26,21 +24,15 @@ func newTestChart() *Stage {
 	return stg
 }
 
-var testJob = `
-apiVersion: batch/v1
-kind: Job
+var testConf = `
+apiVersion: v1
+kind: ConfigMap
+data:
+  test: "data"
 metadata:
-  name: test-job
-spec:
-  template:
-    spec:
-      containers:
-      - name: test
-        image: alpine:latest
-        imagePullPolicy: Always
-        command: ["/bin/sh", "-c", "exit 0"]
-      restartPolicy: OnFailure
-  backoffLimit: 1
+  creationTimestamp: null
+  name: config-data
+type: Opaque
 `
 
 func newTestManifest() *Stage {
@@ -50,7 +42,7 @@ func newTestManifest() *Stage {
 		Kind:   "kube",
 		Resource: &kube.Manifest{
 			Namespace: "test-namespace",
-			Object:    []byte(testJob),
+			Object:    []byte(testConf),
 			K8s:       k8s,
 		},
 	}
@@ -68,33 +60,23 @@ func TestShellJobs(t *testing.T) {
 func TestCreateDestroyChart(t *testing.T) {
 	chart := newTestChart()
 
-	wgs := make(Depends, 1)
-	var w sync.WaitGroup
-	w.Add(1)
-	wgs["test"] = &w
-
 	logger := logrus.New().WithField("kind", chart.Kind)
 	values := make(util.Values, 1)
-	err := chart.Forward(logger, "test", values, &wgs, false)
+	err := chart.Create(logger, "test", values, false)
 	assert.NoError(t, err)
 
-	err = chart.Backward(logger, "test", values, &wgs, false)
+	err = chart.Destroy(logger, "test", values, false)
 	assert.NoError(t, err)
 }
 
 func TestCreateDestroyManifest(t *testing.T) {
 	man := newTestManifest()
 
-	wgs := make(Depends, 1)
-	var w sync.WaitGroup
-	w.Add(1)
-	wgs["test"] = &w
-
 	logger := logrus.New().WithField("kind", man.Kind)
 	values := make(util.Values, 1)
-	err := man.Forward(logger, "test", values, &wgs, false)
+	err := man.Create(logger, "test", values, false)
 	assert.NoError(t, err)
 
-	err = man.Backward(logger, "test", values, &wgs, false)
+	err = man.Destroy(logger, "test", values, false)
 	assert.NoError(t, err)
 }

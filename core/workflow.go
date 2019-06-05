@@ -2,6 +2,7 @@ package core
 
 import (
 	"bytes"
+	"fmt"
 	"io/ioutil"
 	"os"
 	"sync"
@@ -18,25 +19,60 @@ import (
 // Stages represents the complete workflow.
 type Stages map[string]*Stage
 
+type Node struct {
+	Lock  *sync.WaitGroup
+	Edges []string
+}
+
 // Depends implements a mapped waitgroup for dependencies
-type Depends map[string]*sync.WaitGroup
+type Depends map[string]*Node
 
 // Wait on given waitgroups
 func (d Depends) Wait(stages ...string) {
 	for _, key := range stages {
-		d[key].Wait()
+		d[key].Lock.Wait()
 	}
 }
 
 // Complete given waitgroups
 func (d Depends) Complete(stages ...string) {
 	for _, key := range stages {
-		d[key].Done()
+		d[key].Lock.Done()
 	}
 }
 
-// BuildDepends generates a dependency map
-func (stg *Stages) BuildDepends(reverse bool) *Depends {
+func (d Depends) dfs(node string, visited, recStack map[string]bool) bool {
+	if !visited[node] {
+		visited[node] = true
+		recStack[node] = true
+
+		for _, edge := range d[node].Edges {
+			if !visited[edge] && d.dfs(edge, visited, recStack) {
+				return true
+			} else if recStack[edge] {
+				return true
+			}
+		}
+
+	}
+	recStack[node] = false
+	return false
+}
+
+// IsCyclic returns true if there is a cycle in the graph
+func (d Depends) IsCyclic() bool {
+	visited := make(map[string]bool, len(d))
+	recStack := make(map[string]bool, len(d))
+	for key := range d {
+		if d.dfs(key, visited, recStack) {
+			return true
+		}
+	}
+	return false
+}
+
+// NewDepends generates a dependency map
+func (stg *Stages) NewDepends(reverse bool) *Depends {
 	stages := *stg
 	wgs := make(Depends, len(stages))
 
@@ -47,18 +83,24 @@ func (stg *Stages) BuildDepends(reverse bool) *Depends {
 				deps[d]++
 			}
 		}
-		for key := range stages {
+		for key, stg := range stages {
 			var w sync.WaitGroup
 			w.Add(deps[key])
-			wgs[key] = &w
+			wgs[key] = &Node{
+				Lock:  &w,
+				Edges: stg.Depends,
+			}
 		}
 		return &wgs
 	}
 
-	for key := range stages {
+	for key, stg := range stages {
 		var w sync.WaitGroup
 		w.Add(1)
-		wgs[key] = &w
+		wgs[key] = &Node{
+			Lock:  &w,
+			Edges: stg.Depends,
+		}
 	}
 	return &wgs
 }
@@ -145,34 +187,43 @@ func (stg *Stages) Destroy(input util.Values, force bool) {
 
 	stages := *stg
 	wg.Add(len(stages))
-	d := stg.BuildDepends(true)
+	deps := stg.NewDepends(true)
 
 	for key, stage := range stages {
 		go func(stg *Stage, key string) {
-			logger := log.WithField("kind", stage.Kind)
-			defer wg.Done()
-			stg.Backward(logger, key, input, d, force)
+			defer deps.Complete(stage.Depends...) // signal anything thread depends on
+			defer wg.Done()                       // main thread can continue
+			deps.Wait(key)                        // wait for dependants to delete first
+
+			stg.Destroy(log.WithField("kind", stage.Kind), key, input, force)
 		}(stage, key)
 	}
 }
 
 // Run processes each stage in the pipeline
-func (stg *Stages) Run(input util.Values, force bool) {
+func (stg *Stages) Run(input util.Values, force bool) error {
 	var wg sync.WaitGroup
-	defer wg.Wait()
 
 	stages := *stg
 	wg.Add(len(stages))
-	d := stg.BuildDepends(false)
+	deps := stg.NewDepends(false)
+	if deps.IsCyclic() {
+		return fmt.Errorf("cycle in dependencies")
+	}
 
+	defer wg.Wait()
 	log.Infoln("Starting workflow...")
 	for key, stage := range stages {
 		go func(stage *Stage, key string) {
-			logger := log.WithField("kind", stage.Kind)
-			defer wg.Done()
-			stage.Forward(logger, key, input, d, force)
+			defer deps.Complete(key)    // indicate thread finished
+			defer wg.Done()             // main thread can continue
+			deps.Wait(stage.Depends...) // wait for dependencies
+
+			stage.Create(log.WithField("kind", stage.Kind), key, input, force)
 		}(stage, key)
 	}
+
+	return nil
 }
 
 // Until creates single resource and dependencies
@@ -181,7 +232,7 @@ func (stg *Stages) Until(input util.Values, force bool, target string) {
 	defer wg.Wait()
 
 	stages := *stg
-	d := stg.BuildDepends(false)
+	deps := stg.NewDepends(false)
 
 	if _, ok := stages[target]; !ok {
 		log.Fatalf("%s does not exist", target)
@@ -189,16 +240,20 @@ func (stg *Stages) Until(input util.Values, force bool, target string) {
 
 	wg.Add(len(stages[target].Depends) + 1)
 	go func(stage *Stage, key string) {
-		logger := log.WithField("kind", stage.Kind)
+		defer deps.Complete(key)
 		defer wg.Done()
-		stage.Forward(logger, key, input, d, force)
+		deps.Wait(stage.Depends...)
+
+		stage.Create(log.WithField("kind", stage.Kind), key, input, force)
 	}(stages[target], target)
 
 	for _, dep := range stages[target].Depends {
 		go func(stage *Stage, key string) {
-			logger := log.WithField("kind", stage.Kind)
+			defer deps.Complete(key)
 			defer wg.Done()
-			stage.Forward(logger, key, input, d, force)
+			deps.Wait(stage.Depends...)
+
+			stage.Create(log.WithField("kind", stage.Kind), key, input, force)
 		}(stages[dep], dep)
 	}
 }

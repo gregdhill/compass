@@ -87,7 +87,7 @@ var runCmd = &cobra.Command{
 			}
 		}
 		for k, v := range tags {
-			shas[k], err = docker.GetImageHash(v)
+			shas[k], err = docker.GetImageDigest(v)
 			if err != nil {
 				return err
 			}
@@ -143,8 +143,7 @@ var runCmd = &cobra.Command{
 		}
 
 		// run full workflow
-		workflow.Run(genVals, force)
-		return nil
+		return workflow.Run(genVals, force)
 	},
 }
 
