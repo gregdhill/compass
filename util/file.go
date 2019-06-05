@@ -6,6 +6,7 @@ import (
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"regexp"
 
 	"gopkg.in/src-d/go-git.v4"
 )
@@ -24,14 +25,14 @@ func IsDir(name string) bool {
 }
 
 // PackageDir recursively adds files under the given directory to an in-memory tar file
-func PackageDir(path string) ([]byte, error) {
+func PackageDir(dir string, input []string) ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	defer tw.Close()
 
-	if err := filepath.Walk(path, func(path string, file os.FileInfo, err error) error {
+	if err := filepath.Walk(dir, func(dir string, file os.FileInfo, err error) error {
 		hdr := &tar.Header{
-			Name: path,
+			Name: dir,
 			Mode: 0600,
 			Size: file.Size(),
 		}
@@ -39,11 +40,18 @@ func PackageDir(path string) ([]byte, error) {
 			hdr.Typeflag = tar.TypeDir
 		}
 
+		// .dockerignore
+		for _, i := range input {
+			if match, _ := regexp.MatchString(i, dir); match {
+				return nil
+			}
+		}
+
 		if err := tw.WriteHeader(hdr); err != nil {
 			return err
 		}
 
-		contents, err := ioutil.ReadFile(path)
+		contents, err := ioutil.ReadFile(dir)
 		if _, err := tw.Write(contents); err != nil {
 			return err
 		}

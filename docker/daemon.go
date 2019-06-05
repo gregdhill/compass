@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"os"
 	"path"
 	"strings"
 
@@ -32,9 +33,33 @@ func streamLogs(body io.ReadCloser, field string) error {
 	return scanner.Err()
 }
 
+func readIgnore(path string) ([]string, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		// if file doesn't exist
+		// just package everything
+		return nil, nil
+	}
+	defer file.Close()
+
+	out := make([]string, 0)
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		out = append(out, scanner.Text())
+	}
+
+	return out, scanner.Err()
+}
+
 func buildImage(ctx context.Context, cli client.ImageAPIClient, buildCtx, ref string) error {
 	log.Infof("Packaging from: %s", buildCtx)
-	tarArch, err := util.PackageDir(buildCtx)
+
+	ignore, err := readIgnore(path.Join(buildCtx, ".dockerignore"))
+	if err != nil {
+		return err
+	}
+
+	tarArch, err := util.PackageDir(buildCtx, ignore)
 	if err != nil {
 		return err
 	}
@@ -89,8 +114,11 @@ func tagRef(ref, buildCtx string) (string, error) {
 		return ref, nil
 	}
 	commit, err := util.GetHead(buildCtx)
+	if err != nil {
+		return "", err
+	}
 	log.Infof("No tag supplied, using last commit id: %s", commit)
-	return fmt.Sprintf("%s:%s", ref, commit), err
+	return fmt.Sprintf("%s:%s", ref, commit), nil
 }
 
 // BuildAndPush constructs a local image and commits it to the remote repository
