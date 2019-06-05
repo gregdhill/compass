@@ -43,12 +43,9 @@ func NewClient() *K8s {
 	var k8s K8s
 	var err error
 
-	// Fetch in-cluster config, if err try local
-	if k8s.config, err = rest.InClusterConfig(); err != nil {
-		k8s.config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
-		if err != nil {
-			log.Fatal(err)
-		}
+	k8s.config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
+	if err != nil {
+		log.Fatal(err)
 	}
 
 	loadingRules := clientcmd.NewDefaultClientConfigLoadingRules()
