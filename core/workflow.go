@@ -151,6 +151,7 @@ func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerP
 func Render(name string, input util.Values, k8s *kube.K8s) ([]byte, error) {
 	funcs := template.FuncMap{
 		"getDigest":     docker.GetImageDigest,
+		"getCommit":     util.GetHead,
 		"fromConfigMap": k8s.FromConfigMap,
 		"fromSecret":    k8s.FromSecret,
 		"parseJSON":     kube.ParseJSON,
