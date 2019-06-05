@@ -83,12 +83,11 @@ func (stg *Stages) NewDepends(reverse bool) *Depends {
 				deps[d]++
 			}
 		}
-		for key, stg := range stages {
+		for key := range stages {
 			var w sync.WaitGroup
 			w.Add(deps[key])
 			wgs[key] = &Node{
-				Lock:  &w,
-				Edges: stg.Depends,
+				Lock: &w,
 			}
 		}
 		return &wgs
@@ -190,12 +189,12 @@ func (stg *Stages) Destroy(input util.Values, force bool) {
 	deps := stg.NewDepends(true)
 
 	for key, stage := range stages {
-		go func(stg *Stage, key string) {
-			defer deps.Complete(stage.Depends...) // signal anything thread depends on
-			defer wg.Done()                       // main thread can continue
-			deps.Wait(key)                        // wait for dependants to delete first
+		go func(this *Stage, key string) {
+			defer deps.Complete(this.Depends...) // signal anything that depends on this
+			defer wg.Done()                      // main thread can continue
+			deps.Wait(key)                       // wait for dependants to delete first
 
-			stg.Destroy(log.WithField("kind", stage.Kind), key, input, force)
+			this.Destroy(log.WithField("kind", stage.Kind), key, input, force)
 		}(stage, key)
 	}
 }
@@ -214,12 +213,12 @@ func (stg *Stages) Run(input util.Values, force bool) error {
 	defer wg.Wait()
 	log.Infoln("Starting workflow...")
 	for key, stage := range stages {
-		go func(stage *Stage, key string) {
-			defer deps.Complete(key)    // indicate thread finished
-			defer wg.Done()             // main thread can continue
-			deps.Wait(stage.Depends...) // wait for dependencies
+		go func(this *Stage, key string) {
+			defer deps.Complete(key)   // indicate thread finished
+			defer wg.Done()            // main thread can continue
+			deps.Wait(this.Depends...) // wait for dependencies
 
-			stage.Create(log.WithField("kind", stage.Kind), key, input, force)
+			this.Create(log.WithField("kind", this.Kind), key, input, force)
 		}(stage, key)
 	}
 
@@ -239,21 +238,21 @@ func (stg *Stages) Until(input util.Values, force bool, target string) {
 	}
 
 	wg.Add(len(stages[target].Depends) + 1)
-	go func(stage *Stage, key string) {
+	go func(this *Stage, key string) {
 		defer deps.Complete(key)
 		defer wg.Done()
-		deps.Wait(stage.Depends...)
+		deps.Wait(this.Depends...)
 
-		stage.Create(log.WithField("kind", stage.Kind), key, input, force)
+		this.Create(log.WithField("kind", this.Kind), key, input, force)
 	}(stages[target], target)
 
 	for _, dep := range stages[target].Depends {
-		go func(stage *Stage, key string) {
+		go func(this *Stage, key string) {
 			defer deps.Complete(key)
 			defer wg.Done()
-			deps.Wait(stage.Depends...)
+			deps.Wait(this.Depends...)
 
-			stage.Create(log.WithField("kind", stage.Kind), key, input, force)
+			this.Create(log.WithField("kind", this.Kind), key, input, force)
 		}(stages[dep], dep)
 	}
 }

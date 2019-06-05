@@ -189,7 +189,6 @@ func init() {
 	rootCmd.AddCommand(runCmd)
 
 	kubeCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace to deploy")
-	kubeCmd.MarkFlagRequired("namespace")
 	rootCmd.AddCommand(kubeCmd)
 }
 

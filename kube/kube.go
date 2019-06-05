@@ -93,7 +93,7 @@ func (k8s *K8s) ForwardPod(name, namespace, local, remote string) chan struct{} 
 
 	tillerName, err := k8s.FindPod(namespace, fmt.Sprintf("name=%s", name))
 	if err != nil {
-		log.Fatal(err)
+		log.Fatal(fmt.Errorf("can't find tiller: %s", err))
 	}
 
 	path := fmt.Sprintf("/api/v1/namespaces/%s/pods/%s/portforward", "kube-system", tillerName)
