@@ -26,6 +26,7 @@ require (
 	github.com/moby/moby v1.13.1
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.1 // indirect
+	github.com/monax/relic v2.0.0+incompatible
 	github.com/onsi/ginkgo v1.7.0 // indirect
 	github.com/onsi/gomega v1.4.3 // indirect
 	github.com/peterbourgon/diskv v2.0.1+incompatible // indirect

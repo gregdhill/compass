@@ -8,6 +8,7 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/monax/compass/cmd/project"
 	"github.com/monax/compass/core"
 	"github.com/monax/compass/docker"
 	"github.com/monax/compass/helm"
@@ -38,7 +39,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:          "compass",
 	Short:        "Kubernetes & Helm",
-	Long:         `Layer variables from templated files and explicit values - if no command given, output values as JSON`,
+	Long:         `Layer variables from templated files and explicit values.`,
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		k8s = kube.NewClient(kubeConfig)
@@ -59,10 +60,16 @@ var rootCmd = &cobra.Command{
 		values = vals
 		return nil
 	},
+}
+
+var outputCmd = &cobra.Command{
+	Use:   "output",
+	Short: "Output the generated values.",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		if len(values) == 0 {
 			return fmt.Errorf("no values supplied")
 		}
+
 		valOut, err := json.Marshal(values)
 		if err != nil {
 			return fmt.Errorf("couldn't marshal values: %v", err)
@@ -72,9 +79,17 @@ var rootCmd = &cobra.Command{
 	},
 }
 
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number.",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Printf("Compass - v%s\n", project.GetVersion())
+	},
+}
+
 var runCmd = &cobra.Command{
 	Use:          "run",
-	Short:        "Run the given workflow",
+	Short:        "Run the given workflow.",
 	SilenceUsage: true,
 	Args:         cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
@@ -153,7 +168,7 @@ var runCmd = &cobra.Command{
 
 var kubeCmd = &cobra.Command{
 	Use:   "kube",
-	Short: "Template and deploy given kubernetes spec",
+	Short: "Template and deploy given Kubernetes spec.",
 	Args:  cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		spec := args[0]
@@ -179,10 +194,10 @@ var kubeCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringToStringVar(&builds, "build", nil, "build specified dockerfile")
+	rootCmd.PersistentFlags().StringToStringVar(&builds, "build", nil, "build specified image in context")
 	rootCmd.PersistentFlags().StringVar(&kubeConfig, "kube-config", "", "kubernetes config")
 	rootCmd.PersistentFlags().StringToStringVar(&tags, "tag", nil, "get digest of image")
-	rootCmd.PersistentFlags().StringArrayVarP(&templates, "template", "t", nil, "file with key:value mappings (YAML)")
+	rootCmd.PersistentFlags().StringArrayVarP(&templates, "template", "t", nil, "file with key:value mappings")
 	rootCmd.PersistentFlags().StringToStringVar(&values, "value", nil, "explicit key:value pairs")
 
 	runCmd.Flags().StringVarP(&buildCtx, "context", "c", ".", "context for building and packaging")
@@ -196,6 +211,9 @@ func init() {
 
 	kubeCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace to deploy")
 	rootCmd.AddCommand(kubeCmd)
+
+	rootCmd.AddCommand(outputCmd)
+	rootCmd.AddCommand(versionCmd)
 }
 
 func main() {

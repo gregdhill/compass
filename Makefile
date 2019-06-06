@@ -4,4 +4,6 @@ test:
 
 .PHONY: install
 install:
-	@go build -o ${GOPATH}/bin/compass cmd/main.go
+	@go build -o ${GOPATH}/bin/compass \
+		-ldflags "-X github.com/monax/compass/cmd/project.commit=$(shell git rev-parse --short HEAD)" \
+		./cmd/main.go
