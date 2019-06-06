@@ -20,20 +20,21 @@ import (
 )
 
 var (
-	k8s        *kube.K8s
-	templates  []string
-	values     map[string]string
-	builds     map[string]string
-	tags       map[string]string
-	destroy    bool
-	force      bool
-	buildCtx   string
-	tillerName string
-	tillerPort string
-	until      string
-	namespace  string
-	kubeConfig string
-	helmConfig string
+	k8s          *kube.K8s
+	templates    []string
+	values       map[string]string
+	builds       map[string]string
+	tags         map[string]string
+	destroy      bool
+	force        bool
+	buildCtx     string
+	tillerName   string
+	tillerPort   string
+	until        string
+	namespace    string
+	kubeConfig   string
+	helmConfig   string
+	shortVersion bool
 )
 
 var rootCmd = &cobra.Command{
@@ -63,8 +64,9 @@ var rootCmd = &cobra.Command{
 }
 
 var outputCmd = &cobra.Command{
-	Use:   "output",
-	Short: "Output the generated values.",
+	Use:     "output",
+	Aliases: []string{"out"},
+	Short:   "Output the generated values.",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		if len(values) == 0 {
 			return fmt.Errorf("no values supplied")
@@ -83,7 +85,7 @@ var versionCmd = &cobra.Command{
 	Use:   "version",
 	Short: "Print the version number.",
 	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Printf("Compass - v%s\n", project.GetVersion())
+		fmt.Println(project.GetVersion(shortVersion))
 	},
 }
 
@@ -213,6 +215,8 @@ func init() {
 	rootCmd.AddCommand(kubeCmd)
 
 	rootCmd.AddCommand(outputCmd)
+
+	versionCmd.Flags().BoolVar(&shortVersion, "short", false, "only output version")
 	rootCmd.AddCommand(versionCmd)
 }
 

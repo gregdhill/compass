@@ -21,9 +21,9 @@ var History relic.ImmutableHistory = relic.NewHistory("Compass", "https://github
 		`,
 	)
 
-func GetVersion() string {
-	if commit != "" {
-		return fmt.Sprintf("%s (%s)", History.CurrentVersion().String(), commit)
+func GetVersion(short bool) string {
+	if commit != "" && !short {
+		return fmt.Sprintf("v%s (%s)", History.CurrentVersion().String(), commit)
 	}
-	return History.CurrentVersion().String()
+	return fmt.Sprintf("v%s", History.CurrentVersion().String())
 }
