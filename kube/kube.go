@@ -7,8 +7,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"os"
-	"path/filepath"
 	"strings"
 
 	log "github.com/sirupsen/logrus"
@@ -40,11 +38,14 @@ type K8s struct {
 }
 
 // NewClient populates a new connection
-func NewClient() *K8s {
+func NewClient(conf string) *K8s {
 	var k8s K8s
 	var err error
 
-	k8s.config, err = clientcmd.BuildConfigFromFlags("", filepath.Join(os.Getenv("HOME"), ".kube", "config"))
+	if conf == "" {
+		conf = clientcmd.RecommendedHomeFile
+	}
+	k8s.config, err = clientcmd.BuildConfigFromFlags("", conf)
 	if err != nil {
 		log.Fatal(err)
 	}

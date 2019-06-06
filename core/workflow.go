@@ -115,11 +115,7 @@ func (stg *Stages) Lint(in util.Values) (err error) {
 }
 
 // Connect links all of our stages to their required resources and pre-renders their input
-func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerPort string) (func(), error) {
-	tiller := helm.NewClient(k8s, tillerName, tillerPort)
-	closer := func() {
-		tiller.Close()
-	}
+func (stg *Stages) Connect(k8s *kube.K8s, tiller *helm.Tiller, input util.Values) error {
 
 	for _, stg := range *stg {
 		switch stg.Kind {
@@ -131,12 +127,12 @@ func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerP
 
 		out, err := Render(stg.Template, input, k8s)
 		if err != nil {
-			return closer, err
+			return err
 		}
 		if stg.Values != nil {
 			vals, err := yaml.Marshal(stg.Values)
 			if err != nil {
-				return closer, err
+				return err
 			}
 			out = append(out, vals...)
 		}
@@ -144,7 +140,7 @@ func (stg *Stages) Connect(k8s *kube.K8s, input util.Values, tillerName, tillerP
 		stg.SetInput(out)
 	}
 
-	return closer, nil
+	return nil
 }
 
 // Render reads a file and templates it according to the provided functions

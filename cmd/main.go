@@ -10,6 +10,7 @@ import (
 
 	"github.com/monax/compass/core"
 	"github.com/monax/compass/docker"
+	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
 	log "github.com/sirupsen/logrus"
@@ -30,15 +31,17 @@ var (
 	tillerPort string
 	until      string
 	namespace  string
+	kubeConfig string
+	helmConfig string
 )
 
 var rootCmd = &cobra.Command{
 	Use:          "compass",
 	Short:        "Kubernetes & Helm",
-	Long:         `Deploy a templated pipeline or install a single manifest. If no command given, output values as JSON.`,
+	Long:         `Layer variables from templated files and explicit values - if no command given, output values as JSON`,
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
-		k8s = kube.NewClient()
+		k8s = kube.NewClient(kubeConfig)
 		if values == nil {
 			values = make(map[string]string)
 		}
@@ -108,9 +111,10 @@ var runCmd = &cobra.Command{
 			return err
 		}
 
-		closer, err := workflow.Connect(k8s, genVals, tillerName, tillerPort)
-		defer closer()
-		if err != nil {
+		tiller := helm.NewClient(k8s, helmConfig, tillerName, tillerPort)
+		defer tiller.Close()
+
+		if err = workflow.Connect(k8s, tiller, genVals); err != nil {
 			return err
 		}
 
@@ -175,14 +179,16 @@ var kubeCmd = &cobra.Command{
 }
 
 func init() {
+	rootCmd.PersistentFlags().StringToStringVar(&builds, "build", nil, "build specified dockerfile")
+	rootCmd.PersistentFlags().StringVar(&kubeConfig, "kube-config", "", "kubernetes config")
+	rootCmd.PersistentFlags().StringToStringVar(&tags, "tag", nil, "get digest of image")
 	rootCmd.PersistentFlags().StringArrayVarP(&templates, "template", "t", nil, "file with key:value mappings (YAML)")
 	rootCmd.PersistentFlags().StringToStringVar(&values, "value", nil, "explicit key:value pairs")
-	rootCmd.PersistentFlags().StringToStringVar(&builds, "build", nil, "build specified dockerfile")
-	rootCmd.PersistentFlags().StringToStringVar(&tags, "tag", nil, "get digest of image")
 
 	runCmd.Flags().StringVarP(&buildCtx, "context", "c", ".", "context for building and packaging")
 	runCmd.Flags().BoolVarP(&destroy, "destroy", "d", false, "purge all stages, top-down")
 	runCmd.Flags().BoolVarP(&force, "force", "f", false, "force install / upgrade / delete")
+	runCmd.Flags().StringVar(&helmConfig, "helm-config", "", "helm config")
 	runCmd.Flags().StringVarP(&tillerName, "tillerName", "n", "kube-system", "namespace to search for Tiller")
 	runCmd.Flags().StringVarP(&tillerPort, "tillerPort", "p", "44134", "port to connect on Tiller")
 	runCmd.Flags().StringVarP(&until, "until", "u", "", "only deploy stage and dependencies")

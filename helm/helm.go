@@ -27,7 +27,7 @@ type Tiller struct {
 }
 
 // NewClient creates a new connection to tiller
-func NewClient(k8s *kube.K8s, namespace, remote string) *Tiller {
+func NewClient(k8s *kube.K8s, conf, namespace, remote string) *Tiller {
 	port, err := freeport.GetFreePort()
 	if err != nil {
 		log.Fatal(err)
@@ -36,8 +36,12 @@ func NewClient(k8s *kube.K8s, namespace, remote string) *Tiller {
 
 	tillerTunnelAddress := fmt.Sprintf("localhost:%s", local)
 	hl := helm.NewClient(helm.Host(tillerTunnelAddress), helm.ConnectTimeout(60))
+
 	var settings helm_env.EnvSettings
-	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
+	if conf == "" {
+		conf = helm_env.DefaultHelmHome
+	}
+	settings.Home = helmpath.Home(conf)
 
 	return &Tiller{
 		client: hl,
