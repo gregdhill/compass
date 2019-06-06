@@ -54,7 +54,7 @@ func (m *Manifest) Connect(k8s interface{}) {
 func (m *Manifest) buildObjects() ([]runtime.Object, error) {
 	decode := scheme.Codecs.UniversalDeserializer().Decode
 	objs := bytes.Split(m.Object, []byte("---"))
-	log.Infof("Given %d specification(s)", len(objs))
+	m.logger.Infof("Given %d specification(s)", len(objs))
 	var specs []runtime.Object
 	for _, obj := range objs {
 		spec, _, err := decode(obj, nil, nil)
@@ -121,10 +121,10 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 	if err == nil {
 		switch def := spec.(type) {
 		case *v1batch.Job:
-			log.Infof("Waiting for job: %s", def.Name)
+			m.logger.Infof("Waiting for job: %s", def.Name)
 			err = m.waitJob(m.Namespace, def.GetName(), m.Remove, m.Timeout)
 		case *v1core.Pod:
-			log.Infof("Waiting for pod: %s", def.Name)
+			m.logger.Infof("Waiting for pod: %s", def.Name)
 			err = m.waitPod(m.Namespace, def.GetName(), m.Remove, m.Timeout)
 		}
 	}
@@ -134,6 +134,10 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 
 // Workflow executes against each kubernetes spec
 func (m *Manifest) Workflow(do action) error {
+	m.logger = log.WithFields(log.Fields{
+		"kind": "kubernetes",
+	})
+
 	specs, err := m.buildObjects()
 	if err != nil {
 		return err

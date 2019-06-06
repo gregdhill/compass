@@ -53,7 +53,6 @@ func readIgnore(path string) ([]string, error) {
 
 func buildImage(ctx context.Context, cli client.ImageAPIClient, buildCtx, ref string) error {
 	log.Infof("Packaging from: %s", buildCtx)
-
 	ignore, err := readIgnore(path.Join(buildCtx, ".dockerignore"))
 	if err != nil {
 		return err
@@ -64,6 +63,7 @@ func buildImage(ctx context.Context, cli client.ImageAPIClient, buildCtx, ref st
 		return err
 	}
 
+	log.Info("Sending context to daemon...")
 	imageBuildResponse, err := cli.ImageBuild(
 		ctx,
 		bytes.NewReader(tarArch),
@@ -72,7 +72,7 @@ func buildImage(ctx context.Context, cli client.ImageAPIClient, buildCtx, ref st
 			Tags:       []string{ref},
 		})
 	if err != nil {
-		return errors.Wrap(err, "cannot build docker image")
+		return errors.Wrap(err, fmt.Sprintf("cannot build docker image with ref %s", ref))
 	}
 	defer imageBuildResponse.Body.Close()
 

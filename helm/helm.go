@@ -18,17 +18,12 @@ import (
 	"k8s.io/helm/pkg/proto/hapi/chart"
 )
 
-var (
-	helmLogger = log.WithFields(log.Fields{
-		"kind": "helm",
-	})
-)
-
 // Tiller represents a helm client and open connection to tiller
 type Tiller struct {
 	client helm.Interface
 	envset helm_env.EnvSettings
 	tiller chan struct{}
+	logger *log.Entry
 }
 
 // NewClient creates a new connection to tiller
@@ -48,6 +43,9 @@ func NewClient(k8s *kube.K8s, namespace, remote string) *Tiller {
 		client: hl,
 		envset: settings,
 		tiller: k8s.ForwardPod("tiller", namespace, local, remote),
+		logger: log.WithFields(log.Fields{
+			"kind": "helm",
+		}),
 	}
 }
 
@@ -98,23 +96,24 @@ func (c *Chart) Connect(bridge interface{}) {
 	c.Tiller = bridge.(*Tiller)
 }
 
-func downloadChart(location, version string, settings helm_env.EnvSettings) (*chart.Chart, error) {
-	if util.IsDir(location) {
-		helmLogger.Infof("Using local chart: %s", location)
-		return chartutil.LoadDir(location)
+// Download a chart to the local cache
+func (c *Chart) Download() (*chart.Chart, error) {
+	if util.IsDir(c.Name) {
+		c.logger.Infof("Using local chart: %s", c.Name)
+		return chartutil.LoadDir(c.Name)
 	}
 
-	helmLogger.Infof("Downloading: %s", location)
+	c.logger.Infof("Downloading: %s", c.Name)
 	dl := downloader.ChartDownloader{
-		HelmHome: settings.Home,
-		Getters:  getter.All(settings),
+		HelmHome: c.envset.Home,
+		Getters:  getter.All(c.envset),
 	}
-	if _, err := os.Stat(settings.Home.Archive()); os.IsNotExist(err) {
-		fmt.Printf("Creating directory: %s\n", settings.Home.Archive())
-		os.MkdirAll(settings.Home.Archive(), 0744)
+	if _, err := os.Stat(c.envset.Home.Archive()); os.IsNotExist(err) {
+		fmt.Printf("Creating directory: %s\n", c.envset.Home.Archive())
+		os.MkdirAll(c.envset.Home.Archive(), 0744)
 	}
 
-	chart, _, err := dl.DownloadTo(location, version, settings.Home.Archive())
+	chart, _, err := dl.DownloadTo(c.Name, c.Version, c.envset.Home.Archive())
 	if err != nil {
 		return nil, err
 	}
@@ -137,12 +136,12 @@ func (c *Chart) Status() (bool, error) {
 
 // Install deploys a helm chart
 func (c *Chart) Install() error {
-	reqChart, err := downloadChart(c.Name, c.Version, c.envset)
+	reqChart, err := c.Download()
 	if err != nil {
 		return err
 	}
 
-	helmLogger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
+	c.logger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
 	chartutil.LoadRequirements(reqChart)
 	_, err = c.client.InstallReleaseFromChart(
 		reqChart,
@@ -161,12 +160,12 @@ func (c *Chart) Install() error {
 
 // Upgrade tells tiller to upgrade a helm chart
 func (c *Chart) Upgrade() error {
-	reqChart, err := downloadChart(c.Name, c.Version, c.envset)
+	reqChart, err := c.Download()
 	if err != nil {
 		return err
 	}
 
-	helmLogger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
+	c.logger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
 	_, err = c.client.UpdateReleaseFromChart(
 		c.Release,
 		reqChart,
@@ -193,11 +192,12 @@ func (c *Chart) Delete() error {
 
 // NewFakeClient establishes a fake helm client
 func NewFakeClient() *Tiller {
-	hl := Tiller{}
 	var client helm.FakeClient
 	var settings helm_env.EnvSettings
 	settings.Home = helmpath.Home(os.Getenv("HOME") + "/.helm")
-	hl.client = client.Option()
-	hl.envset = settings
-	return &hl
+	return &Tiller{
+		client: client.Option(),
+		envset: settings,
+		logger: log.StandardLogger().WithField("kind", "helm"),
+	}
 }

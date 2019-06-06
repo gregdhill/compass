@@ -1,6 +1,7 @@
 package helm
 
 import (
+	"fmt"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -20,22 +21,41 @@ func newTestChart() Chart {
 	}
 }
 
-func TestDownloadChart(t *testing.T) {
-	cli := NewFakeClient()
+func TestDownload(t *testing.T) {
+	t.Run("Charts", func(t *testing.T) {
+		t.Run("NotExist", func(t *testing.T) {
+			t.Parallel()
+			chart := newTestChart()
+			chart.Name = "fake/chart"
+			_, err := chart.Download()
+			assert.Error(t, err)
+		})
+		t.Run("Version", func(t *testing.T) {
+			t.Parallel()
+			chart := newTestChart()
+			chart.Version = "1.0.0"
+			downloaded, err := chart.Download()
+			assert.NoError(t, err)
+			assert.Equal(t, chart.Version, downloaded.GetMetadata().GetVersion())
+		})
+		t.Run("NoVersion", func(t *testing.T) {
+			t.Parallel()
+			chart := newTestChart()
+			downloaded, err := chart.Download()
+			assert.NoError(t, err)
 
-	dl := downloader.ChartDownloader{
-		HelmHome: cli.envset.Home,
-		Getters:  getter.All(cli.envset),
-	}
+			dl := downloader.ChartDownloader{
+				HelmHome: chart.envset.Home,
+				Getters:  getter.All(chart.envset),
+			}
 
-	_, err := downloadChart("fake/chart", "", cli.envset)
-	assert.Error(t, err)
+			url, _, err := dl.ResolveChartVersion(chart.Name, chart.Version)
+			assert.NoError(t, err)
+			actual := fmt.Sprintf("https://kubernetes-charts.storage.googleapis.com/burrow-%s.tgz", downloaded.GetMetadata().GetVersion())
+			assert.Equal(t, url.String(), actual)
 
-	_, err = downloadChart("stable/burrow", "", cli.envset)
-	assert.NoError(t, err)
-
-	url, _, _ := dl.ResolveChartVersion("stable/burrow", "1.0.0")
-	assert.Equal(t, "https://kubernetes-charts.storage.googleapis.com/burrow-1.0.0.tgz", url.String())
+		})
+	})
 }
 
 func TestReleaseStatus(t *testing.T) {
@@ -72,7 +92,7 @@ func TestUpgradeChart(t *testing.T) {
 	chart := newTestChart()
 
 	_, err := chart.Tiller.client.InstallRelease(chart.Name, chart.Namespace, helm.ReleaseName(chart.Release), helm.InstallWait(true))
-	assert.NoError(t, err) 
+	assert.NoError(t, err)
 
 	chart.Upgrade()
 	out, err := chart.Status()

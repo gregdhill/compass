@@ -5,13 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 
+	log "github.com/sirupsen/logrus"
 	"github.com/valyala/fastjson"
 	v1batch "k8s.io/api/batch/v1"
 	v1core "k8s.io/api/core/v1"
@@ -36,6 +36,7 @@ type K8s struct {
 	dynamic dynamic.Interface
 	config  *rest.Config
 	base    clientcmd.ClientConfig
+	logger  *log.Entry
 }
 
 // NewClient populates a new connection
