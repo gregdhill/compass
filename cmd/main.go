@@ -8,7 +8,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/monax/compass/cmd/project"
 	"github.com/monax/compass/core"
 	"github.com/monax/compass/docker"
 	"github.com/monax/compass/helm"
@@ -40,7 +39,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:          "compass",
 	Short:        "Kubernetes & Helm",
-	Long:         `Layer variables from templated files and explicit values.`,
+	Long:         "Layer variables from templated files and explicit values.",
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		k8s = kube.NewClient(kubeConfig)
@@ -66,7 +65,8 @@ var rootCmd = &cobra.Command{
 var outputCmd = &cobra.Command{
 	Use:     "output",
 	Aliases: []string{"out"},
-	Short:   "Output the generated values.",
+	Short:   "Output the generated values",
+	Long:    "Print the result of layering input values as a JSON object.",
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
 		if len(values) == 0 {
 			return fmt.Errorf("no values supplied")
@@ -81,17 +81,10 @@ var outputCmd = &cobra.Command{
 	},
 }
 
-var versionCmd = &cobra.Command{
-	Use:   "version",
-	Short: "Print the version number.",
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println(project.GetVersion(shortVersion))
-	},
-}
-
 var runCmd = &cobra.Command{
 	Use:          "run",
-	Short:        "Run the given workflow.",
+	Short:        "Run the given workflow",
+	Long:         "Run the given workflow, installing resources that do not exist and upgrading those that do.",
 	SilenceUsage: true,
 	Args:         cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) (err error) {
@@ -169,9 +162,11 @@ var runCmd = &cobra.Command{
 }
 
 var kubeCmd = &cobra.Command{
-	Use:   "kube",
-	Short: "Template and deploy given Kubernetes spec.",
-	Args:  cobra.ExactArgs(1),
+	Use:     "kube",
+	Aliases: []string{"kubernetes"},
+	Short:   "Template and deploy given Kubernetes spec",
+	Long:    "Install or upgrade Kubernetes objects based on the supplied specification.",
+	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		spec := args[0]
 		out, err := core.Render(spec, values, k8s)

@@ -20,6 +20,7 @@ require (
 	github.com/googleapis/gnostic v0.0.0-20170729233727-0c5108395e2d // indirect
 	github.com/gophercloud/gophercloud v0.0.0-20180330165814-781450b3c4fc // indirect
 	github.com/huandu/xstrings v0.0.0-20151130125119-3959339b3335 // indirect
+	github.com/ianlancetaylor/demangle v0.0.0-20181102032728-5e5cf60278f6 // indirect
 	github.com/imdario/mergo v0.3.5 // indirect
 	github.com/json-iterator/go v0.0.0-20180701071628-ab8a2e0c74be // indirect
 	github.com/mitchellh/mapstructure v1.1.2
@@ -36,11 +37,12 @@ require (
 	github.com/spf13/cobra v0.0.4
 	github.com/stretchr/testify v1.3.0
 	github.com/valyala/fastjson v1.4.0
+	golang.org/x/arch v0.0.0-20190312162104-788fe5ffcd8c // indirect
 	golang.org/x/crypto v0.0.0-20190513172903-22d7a77e9e5f // indirect
 	golang.org/x/net v0.0.0-20190522155817-f3200d17e092 // indirect
-	golang.org/x/sync v0.0.0-20190423024810-112230192c58 // indirect
 	golang.org/x/sys v0.0.0-20190522044717-8097e1b27ff5 // indirect
 	golang.org/x/text v0.3.2 // indirect
+	golang.org/x/tools v0.0.0-20190606050223-4d9ae51c2468 // indirect
 	google.golang.org/appengine v1.4.0 // indirect
 	google.golang.org/genproto v0.0.0-20190123001331-8819c946db44 // indirect
 	gopkg.in/src-d/go-git.v4 v4.11.0

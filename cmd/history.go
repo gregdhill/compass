@@ -1,9 +1,10 @@
-package project
+package main
 
 import (
 	"fmt"
 
 	"github.com/monax/relic"
+	"github.com/spf13/cobra"
 )
 
 var commit string
@@ -26,4 +27,12 @@ func GetVersion(short bool) string {
 		return fmt.Sprintf("v%s (%s)", History.CurrentVersion().String(), commit)
 	}
 	return fmt.Sprintf("v%s", History.CurrentVersion().String())
+}
+
+var versionCmd = &cobra.Command{
+	Use:   "version",
+	Short: "Print the version number.",
+	Run: func(cmd *cobra.Command, args []string) {
+		fmt.Println(GetVersion(shortVersion))
+	},
 }
