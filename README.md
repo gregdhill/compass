@@ -2,7 +2,7 @@
 
 [![Go Report Card](https://goreportcard.com/badge/github.com/gregdhill/compass)](https://goreportcard.com/report/github.com/monax/compass)
 
-A cloud native pipeline and templating tool. Simply describe how the environment should be setup, and it will find a direction for your stack. As it is still in early development, please use with caution.
+A cloud native templating and workflow tool. Simply describe how the environment should be setup, and it will find a direction for your stack. As it is still in early development, please use with caution.
 
 ## Features
 

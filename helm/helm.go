@@ -5,6 +5,8 @@ import (
 	"os"
 	"strconv"
 
+	"k8s.io/helm/pkg/proto/hapi/release"
+
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
 	"github.com/phayes/freeport"
@@ -126,15 +128,33 @@ func (c *Chart) Download() (*chart.Chart, error) {
 }
 
 // Status returns the status of a release
+// true if exists, else false
 func (c *Chart) Status() (bool, error) {
-	out, err := c.client.ReleaseStatus(c.Release)
-	if err != nil || out == nil {
+	rs, err := c.client.ReleaseStatus(c.Release)
+	if err != nil || rs == nil {
+		// we can probably be smarter about this
+		// but typically helm returns an error if
+		// the release doesn't exist
 		return false, err
 	}
-	statusCode := out.GetInfo().Status.Code.String()
-	if statusCode == "PENDING_INSTALL" {
-		c.Delete()
+
+	// exists; check what state it's in
+	statusCode := rs.GetInfo().Status.Code
+
+	if statusCode == release.Status_PENDING_INSTALL {
+		return false, c.Delete()
+	} else if statusCode == release.Status_FAILED {
+		rh, err := c.client.ReleaseHistory(c.Release)
+		if err != nil {
+			return false, err
+		}
+		// helm won't let us upgrade if the first release failed
+		if releases := rh.GetReleases(); len(releases) <= 1 {
+			return false, c.Delete()
+		}
 	}
+
+	// TODO: check other statuses
 	return true, nil
 }
 
