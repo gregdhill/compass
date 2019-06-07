@@ -43,16 +43,17 @@ var rootCmd = &cobra.Command{
 	SilenceUsage: true,
 	PersistentPreRunE: func(cmd *cobra.Command, args []string) (err error) {
 		k8s = kube.NewClient(kubeConfig)
+		funcs := core.RenderWith(k8s)
+
 		if values == nil {
 			values = make(map[string]string)
 		}
 		vals := util.Values(values) // explicit cli inputs
 
 		// additional template files
+
 		for _, i := range templates {
-			if err = vals.FromTemplate(i, func(name string, input util.Values) ([]byte, error) {
-				return core.Render(name, input, k8s)
-			}); err != nil {
+			if err = vals.FromTemplate(i, funcs); err != nil {
 				return fmt.Errorf("couldn't attach import %s: %v", i, err)
 			}
 		}
@@ -114,7 +115,7 @@ var runCmd = &cobra.Command{
 		// populate workflow with stages
 		workflow := core.Stages{}
 		var data []byte
-		if data, err = core.Render(spec, genVals, k8s); err != nil {
+		if data, err = util.Render(spec, genVals, core.RenderWith(k8s)); err != nil {
 			return err
 		}
 		if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
@@ -169,7 +170,7 @@ var kubeCmd = &cobra.Command{
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		spec := args[0]
-		out, err := core.Render(spec, values, k8s)
+		out, err := util.Render(spec, values, core.RenderWith(k8s))
 		if err != nil {
 			return err
 		}

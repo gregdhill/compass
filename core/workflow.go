@@ -1,7 +1,6 @@
 package core
 
 import (
-	"bytes"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -125,7 +124,7 @@ func (stg *Stages) Connect(k8s *kube.K8s, tiller *helm.Tiller, input util.Values
 			stg.Connect(tiller)
 		}
 
-		out, err := Render(stg.Template, input, k8s)
+		out, err := util.Render(stg.Template, input, RenderWith(k8s))
 		if err != nil {
 			return err
 		}
@@ -143,9 +142,9 @@ func (stg *Stages) Connect(k8s *kube.K8s, tiller *helm.Tiller, input util.Values
 	return nil
 }
 
-// Render reads a file and templates it according to the provided functions
-func Render(name string, input util.Values, k8s *kube.K8s) ([]byte, error) {
-	funcs := template.FuncMap{
+// RenderWith returns the supported templating functions
+func RenderWith(k8s *kube.K8s) template.FuncMap {
+	return template.FuncMap{
 		"getDigest":     docker.GetImageDigest,
 		"getCommit":     util.GetHead,
 		"fromConfigMap": k8s.FromConfigMap,
@@ -157,23 +156,6 @@ func Render(name string, input util.Values, k8s *kube.K8s) ([]byte, error) {
 			return string(data), err
 		},
 	}
-
-	if name == "" {
-		return nil, nil
-	}
-
-	data, err := ioutil.ReadFile(name)
-	if err != nil {
-		return nil, err
-	}
-
-	buf := new(bytes.Buffer)
-	t, err := template.New(name).Funcs(funcs).Parse(string(data))
-	if err != nil {
-		return nil, err
-	}
-	err = t.Execute(buf, input)
-	return buf.Bytes(), err
 }
 
 // Destroy deletes each stage in reverse order

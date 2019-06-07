@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"text/template"
 
 	"gopkg.in/src-d/go-git.v4"
 )
@@ -25,7 +26,7 @@ func IsDir(name string) bool {
 }
 
 // PackageDir recursively adds files under the given directory to an in-memory tar file
-func PackageDir(dir string, input []string) ([]byte, error) {
+func PackageDir(dir string, ignore []string) ([]byte, error) {
 	var buf bytes.Buffer
 	tw := tar.NewWriter(&buf)
 	defer tw.Close()
@@ -41,7 +42,7 @@ func PackageDir(dir string, input []string) ([]byte, error) {
 		}
 
 		// .dockerignore
-		for _, i := range input {
+		for _, i := range ignore {
 			if match, _ := regexp.MatchString(i, dir); match {
 				return nil
 			}
@@ -76,4 +77,24 @@ func GetHead(path string) (string, error) {
 	}
 
 	return ref.Hash().String(), nil
+}
+
+// Render reads a file and templates it according to the provided functions
+func Render(name string, values map[string]string, funcs template.FuncMap) ([]byte, error) {
+	if name == "" {
+		return nil, nil
+	}
+
+	data, err := ioutil.ReadFile(name)
+	if err != nil {
+		return nil, err
+	}
+
+	buf := new(bytes.Buffer)
+	t, err := template.New(name).Funcs(funcs).Parse(string(data))
+	if err != nil {
+		return nil, err
+	}
+	err = t.Execute(buf, values)
+	return buf.Bytes(), err
 }

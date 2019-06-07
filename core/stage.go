@@ -131,9 +131,8 @@ func (stg *Stage) Create(logger *log.Entry, key string, global util.Values, forc
 		return nil
 	}
 
-	local := global.Duplicate()
-	shellVars := local.ToSlice()
-	if err := checkRequires(local, stg.Requires); err != nil {
+	shellVars := global.ToSlice()
+	if err := checkRequires(global, stg.Requires); err != nil {
 		logger.Infof("Ignoring: %s: %s", key, err.Error())
 		return nil
 	}

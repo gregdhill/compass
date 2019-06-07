@@ -1,7 +1,10 @@
 package util
 
 import (
+	"io/ioutil"
+	"os"
 	"testing"
+	"text/template"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -16,6 +19,41 @@ func TestAppendVals(t *testing.T) {
 	assert.Equal(t, 2, len(prev))
 	assert.Equal(t, 1, len(next))
 
+}
+
+func TestFromBytes(t *testing.T) {
+	vals := Values{}
+	err := vals.FromBytes([]byte("key: value"))
+	assert.NoError(t, err)
+	assert.Equal(t, "value", vals["key"])
+}
+
+func TestFromFile(t *testing.T) {
+	vals := Values{}
+	f, err := ioutil.TempFile("", "values.yaml")
+	assert.NoError(t, err)
+	_, err = f.WriteString("key: value")
+	assert.NoError(t, err)
+	assert.NoError(t, f.Close())
+	defer os.Remove(f.Name())
+
+	err = vals.FromFile(f.Name())
+	assert.NoError(t, err)
+	assert.Equal(t, "value", vals["key"])
+}
+
+func TestFromTemplate(t *testing.T) {
+	vals := Values{"key1": "value1"}
+	f, err := ioutil.TempFile("", "values.yaml")
+	assert.NoError(t, err)
+	_, err = f.WriteString("key2: {{ .key1 }}")
+	assert.NoError(t, err)
+	assert.NoError(t, f.Close())
+	defer os.Remove(f.Name())
+
+	err = vals.FromTemplate(f.Name(), template.FuncMap{})
+	assert.NoError(t, err)
+	assert.Equal(t, "value1", vals["key2"])
 }
 
 func TestSliceVars(t *testing.T) {
