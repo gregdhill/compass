@@ -11,6 +11,13 @@ var commit string
 
 var History relic.ImmutableHistory = relic.NewHistory("Compass", "https://github.com/monax/compass").
 	MustDeclareReleases("", ``,
+		"0.4.1 - 2019-06-07",
+		`
+		### Fixed
+		- Kubernetes deploys are now concurrent
+		- Use correct status codes
+		`,
+
 		"0.4.0 - 2019-06-06",
 		`
 		### Changed
