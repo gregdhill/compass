@@ -10,8 +10,7 @@ install:
 
 .PHONY: release
 release: install
-	rm -rf ./dist
 	$(eval COMPASS_VERSION := $(shell compass version --short))
 	git tag ${COMPASS_VERSION}
 	git push origin ${COMPASS_VERSION}
-	goreleaser
+	goreleaser --rm-dist
