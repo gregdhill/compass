@@ -76,14 +76,15 @@ const (
 )
 
 // Execute performs actions against the kubernetes api
-func (m *Manifest) Execute(spec runtime.Object, do action) error {
+func (m *Manifest) Execute(spec runtime.Object, do action, result chan error) {
 	gvk := spec.GetObjectKind().GroupVersionKind()
 	gvr := schema.GroupVersionResource{Group: gvk.Group, Version: gvk.Version}
 
 	// this is empty if using the fake client
 	groupResources, err := restmapper.GetAPIGroupResources(m.K8s.typed.Discovery())
 	if err != nil {
-		return err
+		result <- err
+		return
 	}
 
 	if len(groupResources) != 0 {
@@ -91,7 +92,8 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 		rm := restmapper.NewDiscoveryRESTMapper(groupResources)
 		mapping, err := rm.RESTMapping(gk, gvk.Version)
 		if err != nil {
-			return err
+			result <- err
+			return
 		}
 		gvr = mapping.Resource
 	}
@@ -101,7 +103,8 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 	// convert the object to unstructured
 	unstruct, err := runtime.DefaultUnstructuredConverter.ToUnstructured(spec)
 	if err != nil {
-		return err
+		result <- err
+		return
 	}
 	obj := unstructured.Unstructured{Object: unstruct}
 
@@ -115,7 +118,8 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 	case delete:
 		err = resourceInterface.Delete(obj.GetName(), &metav1.DeleteOptions{})
 	default:
-		return fmt.Errorf("action type '%v' unknown", do)
+		result <- fmt.Errorf("action type '%v' unknown", do)
+		return
 	}
 
 	if err == nil {
@@ -129,7 +133,8 @@ func (m *Manifest) Execute(spec runtime.Object, do action) error {
 		}
 	}
 
-	return err
+	result <- err
+	return
 }
 
 // Workflow executes against each kubernetes spec
@@ -142,13 +147,24 @@ func (m *Manifest) Workflow(do action) error {
 	if err != nil {
 		return err
 	}
+
+	results := make(chan error, len(specs))
+	defer close(results)
+
 	for _, spec := range specs {
 		if spec != nil {
-			if err = m.Execute(spec, do); err != nil {
-				return err
-			}
+			// we don't want to block here
+			go m.Execute(spec, do, results)
 		}
 	}
+
+	for range specs {
+		err := <-results
+		if err != nil {
+			return err
+		}
+	}
+
 	return nil
 }
 
