@@ -2,14 +2,12 @@ package helm
 
 import (
 	"fmt"
+	"net"
 	"os"
-	"strconv"
-
-	"k8s.io/helm/pkg/proto/hapi/release"
+	"strings"
 
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
-	"github.com/phayes/freeport"
 	log "github.com/sirupsen/logrus"
 	"k8s.io/helm/pkg/chartutil"
 	"k8s.io/helm/pkg/downloader"
@@ -18,6 +16,7 @@ import (
 	helm_env "k8s.io/helm/pkg/helm/environment"
 	"k8s.io/helm/pkg/helm/helmpath"
 	"k8s.io/helm/pkg/proto/hapi/chart"
+	"k8s.io/helm/pkg/proto/hapi/release"
 )
 
 // Tiller represents a helm client and open connection to tiller
@@ -29,14 +28,17 @@ type Tiller struct {
 }
 
 // NewClient creates a new connection to tiller
-func NewClient(k8s *kube.K8s, conf, namespace, remote string) *Tiller {
-	port, err := freeport.GetFreePort()
+func NewClient(k8s *kube.K8s, conf, namespace, remote string) (*Tiller, error) {
+	listener, err := net.Listen("tcp", "localhost:0")
 	if err != nil {
-		log.Fatal(err)
+		return nil, err
 	}
-	local := strconv.Itoa(port)
+	if err = listener.Close(); err != nil {
+		return nil, err
+	}
 
-	tillerTunnelAddress := fmt.Sprintf("localhost:%s", local)
+	tillerTunnelAddress := listener.Addr().String()
+	localPort := strings.Split(tillerTunnelAddress, ":")[1]
 	hl := helm.NewClient(helm.Host(tillerTunnelAddress), helm.ConnectTimeout(60))
 
 	var settings helm_env.EnvSettings
@@ -48,11 +50,11 @@ func NewClient(k8s *kube.K8s, conf, namespace, remote string) *Tiller {
 	return &Tiller{
 		client: hl,
 		envset: settings,
-		tiller: k8s.ForwardPod("tiller", namespace, local, remote),
+		tiller: k8s.ForwardPod("tiller", namespace, localPort, remote),
 		logger: log.WithFields(log.Fields{
 			"kind": "helm",
 		}),
-	}
+	}, nil
 }
 
 // Close gracefully exits the connection to tiller

@@ -51,7 +51,6 @@ var rootCmd = &cobra.Command{
 		vals := util.Values(values) // explicit cli inputs
 
 		// additional template files
-
 		for _, i := range templates {
 			if err = vals.FromTemplate(i, funcs); err != nil {
 				return fmt.Errorf("couldn't attach import %s: %v", i, err)
@@ -122,7 +121,10 @@ var runCmd = &cobra.Command{
 			return err
 		}
 
-		tiller := helm.NewClient(k8s, helmConfig, tillerName, tillerPort)
+		tiller, err := helm.NewClient(k8s, helmConfig, tillerName, tillerPort)
+		if err != nil {
+			return err
+		}
 		defer tiller.Close()
 
 		if err = workflow.Connect(k8s, tiller, genVals); err != nil {
