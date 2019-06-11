@@ -11,12 +11,12 @@ import (
 
 func getAuth(ref string) (types.AuthConfig, error) {
 	server := strings.Split(ref, "/")[0]
-	acs, err := config.LoadDefaultConfigFile(os.Stderr).GetAllCredentials()
+	ac, err := config.LoadDefaultConfigFile(os.Stderr).GetAuthConfig(server)
 	if err != nil {
 		return types.AuthConfig{}, err
 	}
 
-	return types.AuthConfig(acs[server]), nil
+	return types.AuthConfig(ac), nil
 }
 
 func getDigest(ref string, conf types.AuthConfig) (string, error) {
