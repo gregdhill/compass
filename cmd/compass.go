@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"context"
@@ -218,7 +218,7 @@ func init() {
 	rootCmd.AddCommand(versionCmd)
 }
 
-func main() {
+func Execute() {
 	if err := rootCmd.Execute(); err != nil {
 		os.Exit(1)
 	}

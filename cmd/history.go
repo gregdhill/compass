@@ -1,4 +1,4 @@
-package main
+package cmd
 
 import (
 	"fmt"
@@ -11,6 +11,13 @@ var commit string
 
 var History relic.ImmutableHistory = relic.NewHistory("Compass", "https://github.com/monax/compass").
 	MustDeclareReleases("", ``,
+		"0.4.2 - 2019-06-12",
+		`
+		### Fixed
+		- Only authenticate against required registry
+		- Move main.go to root so "go install" works
+		`,
+
 		"0.4.1 - 2019-06-07",
 		`
 		### Fixed
