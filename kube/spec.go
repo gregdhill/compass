@@ -6,7 +6,6 @@ import (
 
 	"github.com/monax/compass/util"
 	log "github.com/sirupsen/logrus"
-	v1batch "k8s.io/api/batch/v1"
 	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -109,9 +108,11 @@ func (m *Manifest) Execute(spec runtime.Object, do action, result chan error) {
 	obj := unstructured.Unstructured{Object: unstruct}
 
 	switch action(do) {
-	case install:
-		_, err = resourceInterface.Create(&obj, metav1.CreateOptions{})
-	case upgrade:
+	case install, upgrade:
+		uns, err := resourceInterface.Get(obj.GetName(), metav1.GetOptions{})
+		if err != nil && uns == nil {
+			_, err = resourceInterface.Create(&obj, metav1.CreateOptions{})
+		}
 		_, err = resourceInterface.Update(&obj, metav1.UpdateOptions{})
 	case status:
 		_, err = resourceInterface.Get(obj.GetName(), metav1.GetOptions{})
@@ -124,9 +125,6 @@ func (m *Manifest) Execute(spec runtime.Object, do action, result chan error) {
 
 	if err == nil {
 		switch def := spec.(type) {
-		case *v1batch.Job:
-			m.logger.Infof("Waiting for job: %s", def.Name)
-			err = m.waitJob(m.Namespace, def.GetName(), m.Remove, m.Timeout)
 		case *v1core.Pod:
 			m.logger.Infof("Waiting for pod: %s", def.Name)
 			err = m.waitPod(m.Namespace, def.GetName(), m.Remove, m.Timeout)
@@ -149,7 +147,6 @@ func (m *Manifest) Workflow(do action) error {
 	}
 
 	results := make(chan error, len(specs))
-	defer close(results)
 
 	for _, spec := range specs {
 		if spec != nil {
@@ -158,13 +155,16 @@ func (m *Manifest) Workflow(do action) error {
 		}
 	}
 
+	allErr := make([]error, 0)
 	for range specs {
 		err := <-results
 		if err != nil {
-			return err
+			allErr = append(allErr, err)
 		}
 	}
-
+	if len(allErr) > 0 {
+		return fmt.Errorf("error(s) encountered during %s: %v", do, allErr)
+	}
 	return nil
 }
 
@@ -172,22 +172,17 @@ func (m *Manifest) Workflow(do action) error {
 func (m *Manifest) Status() (bool, error) {
 	err := m.Workflow(status)
 	if err != nil {
-		return false, err
+		return false, nil
 	}
 	return true, nil
 }
 
 // Install the decoded kubernetes objects
-func (m *Manifest) Install() error {
+func (m *Manifest) InstallOrUpgrade() error {
 	if m.Namespace == "" {
 		ns, _, _ := m.base.Namespace()
 		m.Namespace = ns
 	}
-	return m.Workflow(install)
-}
-
-// Upgrade the decoded kubernetes objects
-func (m *Manifest) Upgrade() error {
 	return m.Workflow(upgrade)
 }
 

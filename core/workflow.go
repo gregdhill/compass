@@ -7,6 +7,7 @@ import (
 	"sync"
 	"text/template"
 
+	"github.com/monax/compass/core/schema"
 	"github.com/monax/compass/docker"
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
@@ -14,9 +15,6 @@ import (
 	log "github.com/sirupsen/logrus"
 	"gopkg.in/yaml.v2"
 )
-
-// Stages represents the complete workflow.
-type Stages map[string]*Stage
 
 type Node struct {
 	Lock  *sync.WaitGroup
@@ -71,8 +69,7 @@ func (d Depends) IsCyclic() bool {
 }
 
 // NewDepends generates a dependency map
-func (stg *Stages) NewDepends(reverse bool) *Depends {
-	stages := *stg
+func NewDepends(stages map[string]*schema.Stage, reverse bool) *Depends {
 	wgs := make(Depends, len(stages))
 
 	if reverse {
@@ -104,8 +101,8 @@ func (stg *Stages) NewDepends(reverse bool) *Depends {
 }
 
 // Lint all the stages in our pipeline
-func (stg *Stages) Lint(in util.Values) (err error) {
-	for key, stage := range *stg {
+func Lint(wf *schema.Workflow, in util.Values) (err error) {
+	for key, stage := range wf.Stages {
 		if err = stage.Lint(key, &in); err != nil {
 			return err
 		}
@@ -114,9 +111,8 @@ func (stg *Stages) Lint(in util.Values) (err error) {
 }
 
 // Connect links all of our stages to their required resources and pre-renders their input
-func (stg *Stages) Connect(k8s *kube.K8s, tiller *helm.Tiller, input util.Values) error {
-
-	for _, stg := range *stg {
+func Connect(wf *schema.Workflow, k8s *kube.K8s, tiller *helm.Tiller, input util.Values) error {
+	for _, stg := range wf.Stages {
 		switch stg.Kind {
 		case "kube", "kubernetes":
 			stg.Connect(k8s)
@@ -158,33 +154,31 @@ func RenderWith(k8s *kube.K8s) template.FuncMap {
 	}
 }
 
-// Destroy deletes each stage in reverse order
-func (stg *Stages) Destroy(input util.Values, force bool) {
+// Backward deletes each stage in reverse order
+func Backward(stages map[string]*schema.Stage, input util.Values, force bool) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	stages := *stg
 	wg.Add(len(stages))
-	deps := stg.NewDepends(true)
+	deps := NewDepends(stages, true)
 
 	for key, stage := range stages {
-		go func(this *Stage, key string) {
+		go func(this *schema.Stage, key string) {
 			defer deps.Complete(this.Depends...) // signal anything that depends on this
 			defer wg.Done()                      // main thread can continue
 			deps.Wait(key)                       // wait for dependants to delete first
 
-			this.Destroy(log.WithField("kind", stage.Kind), key, input, force)
+			Destroy(this, log.WithField("kind", stage.Kind), key, input, force)
 		}(stage, key)
 	}
 }
 
-// Run processes each stage in the pipeline
-func (stg *Stages) Run(input util.Values, force bool) error {
+// Forward processes each stage in the pipeline
+func Forward(stages map[string]*schema.Stage, input util.Values, force bool) error {
 	var wg sync.WaitGroup
 
-	stages := *stg
 	wg.Add(len(stages))
-	deps := stg.NewDepends(false)
+	deps := NewDepends(stages, false)
 	if deps.IsCyclic() {
 		return fmt.Errorf("cycle in dependencies")
 	}
@@ -192,12 +186,12 @@ func (stg *Stages) Run(input util.Values, force bool) error {
 	defer wg.Wait()
 	log.Infoln("Starting workflow...")
 	for key, stage := range stages {
-		go func(this *Stage, key string) {
+		go func(this *schema.Stage, key string) {
 			defer deps.Complete(key)   // indicate thread finished
 			defer wg.Done()            // main thread can continue
 			deps.Wait(this.Depends...) // wait for dependencies
 
-			this.Create(log.WithField("kind", this.Kind), key, input, force)
+			Create(this, log.WithField("kind", this.Kind), key, input, force)
 		}(stage, key)
 	}
 
@@ -205,33 +199,32 @@ func (stg *Stages) Run(input util.Values, force bool) error {
 }
 
 // Until creates single resource and dependencies
-func (stg *Stages) Until(input util.Values, force bool, target string) {
+func Until(stages map[string]*schema.Stage, input util.Values, force bool, target string) {
 	var wg sync.WaitGroup
 	defer wg.Wait()
 
-	stages := *stg
-	deps := stg.NewDepends(false)
+	deps := NewDepends(stages, false)
 
 	if _, ok := stages[target]; !ok {
 		log.Fatalf("%s does not exist", target)
 	}
 
 	wg.Add(len(stages[target].Depends) + 1)
-	go func(this *Stage, key string) {
+	go func(this *schema.Stage, key string) {
 		defer deps.Complete(key)
 		defer wg.Done()
 		deps.Wait(this.Depends...)
 
-		this.Create(log.WithField("kind", this.Kind), key, input, force)
+		Create(this, log.WithField("kind", this.Kind), key, input, force)
 	}(stages[target], target)
 
 	for _, dep := range stages[target].Depends {
-		go func(this *Stage, key string) {
+		go func(this *schema.Stage, key string) {
 			defer deps.Complete(key)
 			defer wg.Done()
 			deps.Wait(this.Depends...)
 
-			this.Create(log.WithField("kind", this.Kind), key, input, force)
+			Create(this, log.WithField("kind", this.Kind), key, input, force)
 		}(stages[dep], dep)
 	}
 }

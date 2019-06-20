@@ -73,7 +73,7 @@ func TestRender(t *testing.T) {
 	assert.NoError(t, f.Close())
 	defer os.Remove(f.Name())
 
-	data, err = Render(f.Name(), map[string]string{"key": "value"},
+	data, err = Render(f.Name(), Values{"key": "value"},
 		template.FuncMap{"getMe": func() string {
 			return "value"
 		}})

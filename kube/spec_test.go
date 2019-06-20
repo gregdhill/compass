@@ -42,7 +42,7 @@ func TestCreateDelete(t *testing.T) {
 	assert.NoError(t, err)
 
 	m.SetInput([]byte(testData))
-	err = m.Install()
+	err = m.InstallOrUpgrade()
 	assert.NoError(t, err)
 
 	exists, err := m.Status()
@@ -53,6 +53,6 @@ func TestCreateDelete(t *testing.T) {
 	assert.NoError(t, err)
 
 	exists, err = m.Status()
-	assert.Error(t, err)
+	assert.NoError(t, err)
 	assert.Equal(t, false, exists)
 }

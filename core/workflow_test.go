@@ -3,6 +3,7 @@ package core
 import (
 	"testing"
 
+	"github.com/monax/compass/core/schema"
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/util"
 	"github.com/stretchr/testify/assert"
@@ -11,16 +12,18 @@ import (
 
 func TestLinter(t *testing.T) {
 	chart := newTestChart()
-	charts := map[string]*Stage{"test": chart}
-	pipeline := Stages(charts)
+	charts := map[string]*schema.Stage{"test": chart}
+	wf := &schema.Workflow{}
+	wf.Stages = charts
 
 	chart.Resource.(*helm.Chart).Namespace = ""
-	pipeline.Lint(util.Values{"test_namespace": "somewhere-else"})
-	assert.Equal(t, "somewhere-else", pipeline["test"].Resource.(*helm.Chart).Namespace)
+	Lint(wf, util.Values{"test.namespace": "somewhere-else"})
+	assert.Equal(t, "somewhere-else", wf.Stages["test"].Resource.(*helm.Chart).Namespace)
 }
 
 var testData = `
-test:
+stages:
+  test:
     kind: helm
     timeout: 2400
     name: stable/chart
@@ -28,10 +31,10 @@ test:
 `
 
 func TestUnmarshal(t *testing.T) {
-	pipe := Stages{}
+	pipe := schema.Workflow{}
 	err := yaml.Unmarshal([]byte(testData), &pipe)
 	assert.NoError(t, err)
-	assert.Equal(t, "stable/chart", pipe["test"].Resource.(*helm.Chart).Name)
+	assert.Equal(t, "stable/chart", pipe.Stages["test"].Resource.(*helm.Chart).Name)
 }
 
 func TestDepends(t *testing.T) {
@@ -58,13 +61,13 @@ func TestDepends(t *testing.T) {
 	}
 }
 
-func newTestWorkflow(names ...string) *Stages {
-	stages := make(Stages, len(names))
+func newTestWorkflow(names ...string) *schema.Workflow {
+	wf := schema.NewWorkflow()
 	for _, n := range names {
-		stages[n] = newTestChart()
+		wf.Stages[n] = newTestChart()
 	}
 
-	return &stages
+	return wf
 }
 
 func TestRun(t *testing.T) {
@@ -73,25 +76,25 @@ func TestRun(t *testing.T) {
 		t.Run("BasicRun", func(t *testing.T) {
 			t.Parallel()
 			workflow := newTestWorkflow("test1", "test2")
-			(*workflow)["test2"].Depends = []string{"test1"}
-			err := workflow.Run(values, false)
+			workflow.Stages["test2"].Depends = []string{"test1"}
+			err := Forward(workflow.Stages, values, false)
 			assert.NoError(t, err)
 		})
 		t.Run("AdvancedRun", func(t *testing.T) {
 			t.Parallel()
 			workflow := newTestWorkflow("test1", "test2", "test3", "test4")
-			(*workflow)["test2"].Depends = []string{"test1"}
-			(*workflow)["test3"].Depends = []string{"test2"}
-			err := workflow.Run(values, false)
+			workflow.Stages["test2"].Depends = []string{"test1"}
+			workflow.Stages["test3"].Depends = []string{"test2"}
+			err := Forward(workflow.Stages, values, false)
 			assert.NoError(t, err)
 		})
 		t.Run("DepCycle", func(t *testing.T) {
 			t.Parallel()
 			workflow := newTestWorkflow("test1", "test2", "test3")
-			(*workflow)["test1"].Depends = []string{"test2"}
-			(*workflow)["test2"].Depends = []string{"test3"}
-			(*workflow)["test3"].Depends = []string{"test1"}
-			err := workflow.Run(values, false)
+			workflow.Stages["test1"].Depends = []string{"test2"}
+			workflow.Stages["test2"].Depends = []string{"test3"}
+			workflow.Stages["test3"].Depends = []string{"test1"}
+			err := Forward(workflow.Stages, values, false)
 			assert.Error(t, err)
 		})
 	})

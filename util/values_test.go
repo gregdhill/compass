@@ -7,7 +7,23 @@ import (
 	"text/template"
 
 	"github.com/stretchr/testify/assert"
+	yaml "gopkg.in/yaml.v2"
 )
+
+const testValues = `
+key:
+  value:
+    name: "this"
+    isit: true
+`
+
+func TestUnmarshal(t *testing.T) {
+	values := Values{}
+	err := yaml.Unmarshal([]byte(testValues), &values)
+	assert.NoError(t, err)
+	exp := Values{"key": Values{"value": Values{"isit": true, "name": "this"}}}
+	assert.Equal(t, exp, values)
+}
 
 func TestAppendVals(t *testing.T) {
 	prev := Values{"test1": "test1"}
@@ -74,7 +90,7 @@ func TestCascade(t *testing.T) {
 		{Values{}, "something", "object", "index", "something"},
 
 		// prefer fully-qualified name
-		{Values{"index": "this", "object_index": "that"}, "", "object", "index", "that"},
+		{Values{"index": "this", "object.index": "that"}, "", "object", "index", "that"},
 
 		// use generalized otherwise
 		{Values{"index": "this"}, "", "object", "index", "this"},
@@ -86,5 +102,4 @@ func TestCascade(t *testing.T) {
 			t.Errorf("expected %s, actual %s", tt.expected, actual)
 		}
 	}
-
 }

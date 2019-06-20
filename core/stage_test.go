@@ -3,6 +3,7 @@ package core
 import (
 	"testing"
 
+	"github.com/monax/compass/core/schema"
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
@@ -10,8 +11,8 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func newTestChart() *Stage {
-	stg := &Stage{
+func newTestChart() *schema.Stage {
+	stg := &schema.Stage{
 		Forget: false,
 		Kind:   "helm",
 		Resource: &helm.Chart{
@@ -35,9 +36,9 @@ metadata:
 type: Opaque
 `
 
-func newTestManifest() *Stage {
+func newTestManifest() *schema.Stage {
 	k8s := kube.NewFakeClient()
-	stg := Stage{
+	stg := schema.Stage{
 		Forget: false,
 		Kind:   "kube",
 		Resource: &kube.Manifest{
@@ -49,12 +50,14 @@ func newTestManifest() *Stage {
 	return &stg
 }
 
-func TestShellJobs(t *testing.T) {
+func TestShellTasks(t *testing.T) {
 	jobs := []string{"echo hello"}
-	shellJobs(nil, jobs)
+	err := shellTasks(jobs, nil)
+	assert.NoError(t, err)
 
 	jobs = []string{"error 1"}
-	assert.Panics(t, func() { shellJobs(nil, jobs) })
+	err = shellTasks(jobs, nil)
+	assert.Error(t, err)
 }
 
 func TestCreateDestroyChart(t *testing.T) {
@@ -62,10 +65,10 @@ func TestCreateDestroyChart(t *testing.T) {
 
 	logger := logrus.New().WithField("kind", chart.Kind)
 	values := make(util.Values, 1)
-	err := chart.Create(logger, "test", values, false)
+	err := Create(chart, logger, "test", values, false)
 	assert.NoError(t, err)
 
-	err = chart.Destroy(logger, "test", values, false)
+	err = Destroy(chart, logger, "test", values, false)
 	assert.NoError(t, err)
 }
 
@@ -74,9 +77,9 @@ func TestCreateDestroyManifest(t *testing.T) {
 
 	logger := logrus.New().WithField("kind", man.Kind)
 	values := make(util.Values, 1)
-	err := man.Create(logger, "test", values, false)
+	err := Create(man, logger, "test", values, false)
 	assert.NoError(t, err)
 
-	err = man.Destroy(logger, "test", values, false)
+	err = Destroy(man, logger, "test", values, false)
 	assert.NoError(t, err)
 }

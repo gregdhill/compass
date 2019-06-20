@@ -11,7 +11,6 @@ import (
 
 	log "github.com/sirupsen/logrus"
 	"github.com/valyala/fastjson"
-	v1batch "k8s.io/api/batch/v1"
 	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -133,58 +132,34 @@ func (k8s *K8s) getPodLogs(namespace, name string) (string, error) {
 	return buf.String(), err
 }
 
-func (k8s *K8s) waitJob(namespace, jobName string, remove bool, timeout int64) error {
-	// cleanup job and associated pods
-	var policy metav1.DeletionPropagation = "Foreground"
-	defer k8s.typed.Batch().Jobs(namespace).Delete(jobName, &metav1.DeleteOptions{PropagationPolicy: &policy})
-
-	// make a watcher to check if this job succeeds or fails
-	watch, err := k8s.typed.Batch().Jobs(namespace).Watch(metav1.ListOptions{LabelSelector: fmt.Sprintf("job-name=%s", jobName), TimeoutSeconds: &timeout})
-	if err != nil {
-		return err
-	}
-
-	for event := range watch.ResultChan() {
-		if event.Object.(*v1batch.Job).Status.Succeeded != 0 {
-			return nil
-		} else if event.Object.(*v1batch.Job).Status.Failed != 0 {
-
-			// due to failure as we delete the pods, get all logs
-			pod, err := k8s.FindPod(namespace, fmt.Sprintf("job-name=%s", jobName))
-			if err != nil {
-				return err
-			}
-			logs, err := k8s.getPodLogs(namespace, pod)
-			if err != nil {
-				return err
-			}
-
-			return fmt.Errorf("failed to deploy %s\n%s", jobName, logs)
-		}
-	}
-	return nil
-}
-
-func (k8s *K8s) waitPod(namespace, podName string, remove bool, timeout int64) error {
+func (k8s *K8s) waitPod(namespace, pod string, remove bool, timeout int64) error {
 	// make a watcher to wait for this pod to be ready
-	watch, err := k8s.typed.Core().Pods(namespace).Watch(metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", podName), TimeoutSeconds: &timeout})
+	watch, err := k8s.typed.Core().Pods(namespace).Watch(metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", pod), TimeoutSeconds: &timeout})
 	if err != nil {
 		return err
 	}
 
 	for event := range watch.ResultChan() {
 		phase := event.Object.(*v1core.Pod).Status.Phase
-		if phase == "Succeeded" {
-			if remove {
-				return k8s.typed.CoreV1().Pods(namespace).Delete(podName, &metav1.DeleteOptions{})
-			}
+		if phase == v1core.PodSucceeded {
+			return k8s.getLogsAndDelete(namespace, pod)
+		} else if phase == v1core.PodFailed || phase == v1core.PodUnknown {
+			return k8s.getLogsAndDelete(namespace, pod)
+		} else if phase == v1core.PodRunning {
 			return nil
-		} else if phase == "Failed" || phase == "Unknown" {
-			// TODO: retry
-			return fmt.Errorf("error waiting for pod to complete")
 		}
 	}
-	return nil
+
+	return fmt.Errorf("something went wrong waiting for pod")
+}
+
+func (k8s *K8s) getLogsAndDelete(namespace, pod string) error {
+	logs, err := k8s.getPodLogs(namespace, pod)
+	if err != nil {
+		return err
+	}
+	fmt.Println(logs)
+	return k8s.typed.CoreV1().Pods(namespace).Delete(pod, &metav1.DeleteOptions{})
 }
 
 // FromConfigMap reads an entry from a ConfigMap

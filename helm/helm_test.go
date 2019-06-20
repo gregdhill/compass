@@ -83,7 +83,7 @@ func TestDeleteChart(t *testing.T) {
 
 func TestInstallChart(t *testing.T) {
 	chart := newTestChart()
-	chart.Install()
+	chart.InstallOrUpgrade()
 	out, _ := chart.Status()
 	assert.Equal(t, true, out)
 }
@@ -94,7 +94,7 @@ func TestUpgradeChart(t *testing.T) {
 	_, err := chart.Tiller.client.InstallRelease(chart.Name, chart.Namespace, helm.ReleaseName(chart.Release), helm.InstallWait(true))
 	assert.NoError(t, err)
 
-	chart.Upgrade()
+	chart.InstallOrUpgrade()
 	out, err := chart.Status()
 	assert.NoError(t, err)
 	assert.Equal(t, true, out)

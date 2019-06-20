@@ -8,11 +8,26 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-// Values represents string mappings for go variables
-type Values map[string]string
+// Values represents mappings for go variables
+type Values map[interface{}]interface{}
+
+func NewValues(from map[string]string) Values {
+	values := make(Values)
+	for k, v := range from {
+		values[k] = v
+	}
+	return values
+}
 
 // Append overrides the current map with a new set of values
-func (v Values) Append(add map[string]string) {
+func (v Values) Append(add Values) {
+	for key, value := range add {
+		v[key] = value
+	}
+}
+
+// AppendStr adds mapped strings
+func (v Values) AppendStr(add map[string]string) {
 	for key, value := range add {
 		v[key] = value
 	}
@@ -24,7 +39,7 @@ func (v Values) FromBytes(data []byte) error {
 		return nil
 	}
 
-	values := make(map[string]string)
+	values := make(Values)
 	err := yaml.Unmarshal(data, &values)
 	if err != nil {
 		return err
@@ -74,17 +89,24 @@ func (v Values) ToSlice() []string {
 
 // Cascade returns the first non empty value
 func (v Values) Cascade(current, name, field string) string {
-	options := [3]string{
+	options := [3]interface{}{
 		current,
-		v[fmt.Sprintf("%s_%s", name, field)],
+		v[fmt.Sprintf("%s.%s", name, field)],
 		v[field],
 	}
 
 	for _, opt := range options {
-		if opt != "" {
+		if opt != "" && opt != nil {
 			v[fmt.Sprintf("%s_%s", name, field)] = opt
-			return opt
+			return opt.(string)
 		}
 	}
 	return ""
+}
+
+// Combine merges two string maps
+func Combine(one, two map[string]string) {
+	for key, value := range two {
+		one[key] = value
+	}
 }

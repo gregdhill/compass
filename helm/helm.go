@@ -160,17 +160,25 @@ func (c *Chart) Status() (bool, error) {
 	return true, nil
 }
 
-// Install deploys a helm chart
-func (c *Chart) Install() error {
+// InstallOrUpgrade deploys a helm chart
+func (c *Chart) InstallOrUpgrade() error {
+	exists, _ := c.Status()
 	reqChart, err := c.Download()
 	if err != nil {
 		return err
 	}
 
 	c.logger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
-	chartutil.LoadRequirements(reqChart)
-	_, err = c.client.InstallReleaseFromChart(
-		reqChart,
+	if !exists {
+		return c.Install(reqChart)
+	}
+	return c.Upgrade(reqChart)
+}
+
+// Install tells tiller to install a helm chart
+func (c *Chart) Install(req *chart.Chart) error {
+	_, err := c.client.InstallReleaseFromChart(
+		req,
 		c.Namespace,
 		helm.ReleaseName(c.Release),
 		helm.InstallWait(true),
@@ -178,31 +186,19 @@ func (c *Chart) Install() error {
 		helm.ValueOverrides(c.Object),
 		helm.InstallDryRun(false),
 	)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // Upgrade tells tiller to upgrade a helm chart
-func (c *Chart) Upgrade() error {
-	reqChart, err := c.Download()
-	if err != nil {
-		return err
-	}
-
-	c.logger.Infof("Releasing: %s (%s)", c.Release, reqChart.GetMetadata().GetVersion())
-	_, err = c.client.UpdateReleaseFromChart(
+func (c *Chart) Upgrade(req *chart.Chart) error {
+	_, err := c.client.UpdateReleaseFromChart(
 		c.Release,
-		reqChart,
+		req,
 		helm.UpgradeTimeout(c.Timeout),
 		helm.UpdateValueOverrides(c.Object),
 		helm.UpgradeDryRun(false),
 	)
-	if err != nil {
-		return err
-	}
-	return nil
+	return err
 }
 
 // Delete tells tiller to destroy a release

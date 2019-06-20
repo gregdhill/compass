@@ -6,91 +6,10 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/mitchellh/mapstructure"
-	"github.com/monax/compass/helm"
-	"github.com/monax/compass/kube"
+	"github.com/monax/compass/core/schema"
 	"github.com/monax/compass/util"
 	log "github.com/sirupsen/logrus"
 )
-
-// Jobs represent any shell scripts
-type Jobs struct {
-	Before []string `yaml:"before"`
-	After  []string `yaml:"after"`
-}
-
-// Stage represents a single part of the deployment pipeline
-type Stage struct {
-	Depends  []string    `yaml:"depends"`  // dependencies
-	Forget   bool        `yaml:"forget"`   // install only
-	Template string      `yaml:"template"` // template file
-	Jobs     Jobs        `yaml:"jobs"`     // bash jobs
-	Kind     string      `yaml:"kind"`     // type of deploy
-	Requires util.Values `yaml:"requires"` // env requirements
-	Values   interface{} `yaml:"values"`   // yaml values
-	Resource
-}
-
-// UnmarshalYAML allows us to determine the type of our resource
-func (stg *Stage) UnmarshalYAML(unmarshal func(interface{}) error) error {
-	this := make(map[string]interface{}, 0)
-	if err := unmarshal(&this); err != nil {
-		return err
-	}
-
-	if err := mapstructure.Decode(this, stg); err != nil {
-		return err
-	}
-
-	switch this["kind"] {
-	case "kube", "kubernetes":
-		var km kube.Manifest
-		km.Timeout = 300
-		if err := mapstructure.Decode(this, &km); err != nil {
-			return err
-		}
-		stg.Resource = &km
-	case "helm":
-		var hc helm.Chart
-		hc.Timeout = 300
-		if err := mapstructure.Decode(this, &hc); err != nil {
-			return err
-		}
-		stg.Resource = &hc
-	default:
-		return fmt.Errorf("kind '%s' unknown", this["kind"])
-	}
-
-	return nil
-}
-
-// Resource is the thing to be created / destroyed
-type Resource interface {
-	Lint(string, *util.Values) error
-	Status() (bool, error)
-	Install() error
-	Upgrade() error
-	Delete() error
-	Connect(interface{})
-	SetInput([]byte)
-	GetInput() []byte
-}
-
-func shellJobs(values []string, jobs []string) {
-	for _, command := range jobs {
-		log.Infof("running job: %s\n", command)
-		args := strings.Fields(command)
-		cmd := exec.Command(args[0], args[1:]...)
-		cmd.Env = append(values, os.Environ()...)
-		stdout, err := cmd.Output()
-		if stdout != nil {
-			fmt.Println(string(stdout))
-		}
-		if err != nil {
-			panic(fmt.Errorf("job '%s' exited with error: %v", command, err))
-		}
-	}
-}
 
 func checkRequires(values util.Values, reqs util.Values) error {
 	for k, v := range reqs {
@@ -103,8 +22,45 @@ func checkRequires(values util.Values, reqs util.Values) error {
 	return nil
 }
 
+// Create installs / upgrades resource
+func Create(stg *schema.Stage, logger *log.Entry, key string, global util.Values, force bool) error {
+	// stop if already installed and abandoned
+	installed, _ := stg.Status()
+	if installed && !force && stg.Forget {
+		logger.Infof("Ignoring: %s", key)
+		return nil
+	}
+
+	if err := checkRequires(global, stg.Requires); err != nil {
+		logger.Infof("Ignoring: %s: %s", key, err.Error())
+		return nil
+	}
+
+	shellVars := global.ToSlice()
+	if err := shellTasks(stg.Jobs.Before, shellVars); err != nil {
+		return err
+	}
+
+	if obj := stg.GetInput(); obj != nil {
+		fmt.Println(string(obj))
+	}
+
+	logger.Infof("Installing: %s", key)
+	if err := stg.InstallOrUpgrade(); err != nil {
+		logger.Fatalf("Failed to install %s: %s", key, err)
+		return err
+	}
+	logger.Infof("Installed: %s", key)
+
+	if err := shellTasks(stg.Jobs.After, shellVars); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 // Destroy removes resource
-func (stg *Stage) Destroy(logger *log.Entry, key string, global util.Values, force bool) error {
+func Destroy(stg *schema.Stage, logger *log.Entry, key string, global util.Values, force bool) error {
 	// only continue if required variables are set
 	if err := checkRequires(global, stg.Requires); err != nil {
 		logger.Infof("Ignoring: %s: %s", key, err.Error())
@@ -122,45 +78,24 @@ func (stg *Stage) Destroy(logger *log.Entry, key string, global util.Values, for
 	return stg.Delete()
 }
 
-// Create installs / upgrades resource
-func (stg *Stage) Create(logger *log.Entry, key string, global util.Values, force bool) error {
-	// stop if already installed and abandoned
-	installed, _ := stg.Status()
-	if installed && !force && stg.Forget {
-		logger.Infof("Ignoring: %s", key)
-		return nil
-	}
-
-	shellVars := global.ToSlice()
-	if err := checkRequires(global, stg.Requires); err != nil {
-		logger.Infof("Ignoring: %s: %s", key, err.Error())
-		return nil
-	}
-
-	shellJobs(shellVars, stg.Jobs.Before)
-	defer shellJobs(shellVars, stg.Jobs.After)
-
-	if obj := stg.GetInput(); obj != nil {
-		fmt.Println(string(obj))
-	}
-
-	installed, err := stg.Status()
-	if !installed {
-		logger.Infof("Installing: %s", key)
-		if err := stg.Install(); err != nil {
-			logger.Fatalf("Failed to install %s: %s", key, err)
-			return err
+func shellTasks(jobs []string, values []string) error {
+	for _, command := range jobs {
+		log.Infof("running job: %s\n", command)
+		out, err := Shell(command, values)
+		if out != nil {
+			fmt.Println(string(out))
 		}
-		logger.Infof("Installed: %s", key)
-		return nil
+		if err != nil {
+			return fmt.Errorf("job '%s' exited with error: %v", command, err)
+		}
 	}
-
-	// upgrade if already installed
-	logger.Infof("Upgrading: %s", key)
-	if err = stg.Upgrade(); err != nil {
-		logger.Fatalf("Failed to upgrade %s: %s", key, err)
-		return err
-	}
-	logger.Infof("Upgraded: %s", key)
 	return nil
+}
+
+// Shell runs any given command
+func Shell(command string, values []string) ([]byte, error) {
+	args := strings.Fields(command)
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Env = append(values, os.Environ()...)
+	return cmd.Output()
 }

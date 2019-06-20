@@ -80,7 +80,7 @@ func GetHead(path string) (string, error) {
 }
 
 // Render reads a file and templates it according to the provided functions
-func Render(name string, values map[string]string, funcs template.FuncMap) ([]byte, error) {
+func Render(name string, values map[interface{}]interface{}, funcs template.FuncMap) ([]byte, error) {
 	if name == "" {
 		return nil, nil
 	}
