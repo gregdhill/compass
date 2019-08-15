@@ -22,6 +22,7 @@ func NewWorkflow() *Workflow {
 		Build:  make(map[string]string),
 		Tag:    make(map[string]string),
 		Stages: make(map[string]*Stage),
+		Values: make(util.Values),
 	}
 }
 

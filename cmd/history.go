@@ -11,6 +11,12 @@ var commit string
 
 var History relic.ImmutableHistory = relic.NewHistory("Compass", "https://github.com/monax/compass").
 	MustDeclareReleases("", ``,
+		"0.4.3 - 2019-08-15",
+		`
+		### Changed
+		- Unmarshal map[interface{}]interface{} on values
+		`,
+
 		"0.4.2 - 2019-06-12",
 		`
 		### Fixed

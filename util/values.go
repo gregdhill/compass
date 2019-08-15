@@ -20,15 +20,23 @@ func NewValues(from map[string]string) Values {
 }
 
 // Append overrides the current map with a new set of values
-func (v Values) Append(add Values) {
-	for key, value := range add {
-		v[key] = value
+func (v Values) Append(values Values) {
+	for key, value := range values {
+		switch vv := value.(type) {
+		case Values:
+			if v[key] == nil {
+				v[key] = make(Values)
+			}
+			v[key].(Values).Append(vv)
+		default:
+			v[key] = value
+		}
 	}
 }
 
 // AppendStr adds mapped strings
-func (v Values) AppendStr(add map[string]string) {
-	for key, value := range add {
+func (v Values) AppendStr(values map[string]string) {
+	for key, value := range values {
 		v[key] = value
 	}
 }
@@ -88,19 +96,27 @@ func (v Values) ToSlice() []string {
 }
 
 // Cascade returns the first non empty value
-func (v Values) Cascade(current, name, field string) string {
-	options := [3]interface{}{
-		current,
-		v[fmt.Sprintf("%s.%s", name, field)],
-		v[field],
+func (v Values) Cascade(current, key, field string) string {
+	if current != "" {
+		return current
 	}
 
-	for _, opt := range options {
-		if opt != "" && opt != nil {
-			v[fmt.Sprintf("%s_%s", name, field)] = opt
-			return opt.(string)
+	switch vv := v[key].(type) {
+	case map[string]string:
+		return vv[field]
+	case map[interface{}]string:
+		return vv[field]
+	case Values:
+		if r, ok := vv[field].(string); ok {
+			return r
 		}
 	}
+
+	switch vv := v[field].(type) {
+	case string:
+		return vv
+	}
+
 	return ""
 }
 

@@ -10,31 +10,74 @@ import (
 	yaml "gopkg.in/yaml.v2"
 )
 
-const testValues = `
+const testValues1 = `
 key:
   value:
     name: "this"
     isit: true
+    nested:
+      birds:
+        sleep: together
+    what:
+    - foo: one
+      bar: two
+    - foo: three
+      bar: four
 `
 
-func TestUnmarshal(t *testing.T) {
-	values := Values{}
-	err := yaml.Unmarshal([]byte(testValues), &values)
-	assert.NoError(t, err)
-	exp := Values{"key": Values{"value": Values{"isit": true, "name": "this"}}}
-	assert.Equal(t, exp, values)
-}
+const testValues2 = `
+key:
+  value:
+    hello: world
+    name: that
+    nested:
+      birds:
+        fly: false
+
+input: text
+`
 
 func TestAppendVals(t *testing.T) {
-	prev := Values{"test1": "test1"}
-	next := Values{"test1": "test1"}
-	prev.Append(next)
-	assert.Equal(t, 1, len(prev))
-	next = Values{"test2": "test2"}
-	prev.Append(next)
-	assert.Equal(t, 2, len(prev))
-	assert.Equal(t, 1, len(next))
+	t.Run("Overwrite", func(t *testing.T) {
+		prev := Values{"foo": "bar"}
+		next := Values{"foo": "tar"}
+		prev.Append(next)
+		assert.Equal(t, 1, len(prev))
+		assert.Equal(t, Values{"foo": "tar"}, prev)
+	})
 
+	t.Run("Append", func(t *testing.T) {
+		prev := Values{"foo": "one"}
+		next := Values{"bar": "two"}
+		prev.Append(next)
+		assert.Equal(t, 2, len(prev))
+		assert.Equal(t, Values{"foo": "one", "bar": "two"}, prev)
+		assert.Equal(t, 1, len(next))
+	})
+}
+
+func TestUnmarshal(t *testing.T) {
+	t.Run("Unmarshal yamls", func(t *testing.T) {
+		values := new(Values)
+		err := yaml.Unmarshal([]byte(testValues1), values)
+		assert.NoError(t, err)
+		exp := Values{"key": Values{"value": Values{"isit": true, "name": "this", "nested": Values{"birds": Values{"sleep": "together"}}, "what": []interface{}{Values{"foo": "one", "bar": "two"}, Values{"foo": "three", "bar": "four"}}}}}
+		assert.Equal(t, exp, *values)
+	})
+
+	t.Run("Combine yamls", func(t *testing.T) {
+		first := new(Values)
+		err := yaml.Unmarshal([]byte(testValues1), first)
+		assert.NoError(t, err)
+
+		second := new(Values)
+		err = yaml.Unmarshal([]byte(testValues2), second)
+		assert.NoError(t, err)
+
+		first.Append(*second)
+		exp := Values{"input": "text", "key": Values{"value": Values{"isit": true, "hello": "world", "name": "that", "nested": Values{"birds": Values{"sleep": "together", "fly": false}}, "what": []interface{}{Values{"foo": "one", "bar": "two"}, Values{"foo": "three", "bar": "four"}}}}}
+		assert.Equal(t, exp, *first)
+	})
 }
 
 func TestFromBytes(t *testing.T) {
@@ -82,24 +125,20 @@ func TestCascade(t *testing.T) {
 	var cascading = []struct {
 		values   Values
 		current  string
-		name     string
+		key      string
 		field    string
 		expected string
 	}{
 		// explicit is best
-		{Values{}, "something", "object", "index", "something"},
+		{Values{}, "new", "api", "version", "new"},
 
 		// prefer fully-qualified name
-		{Values{"index": "this", "object.index": "that"}, "", "object", "index", "that"},
-
-		// use generalized otherwise
-		{Values{"index": "this"}, "", "object", "index", "this"},
+		{map[interface{}]interface{}{"api": map[interface{}]string{"version": "old"}}, "", "api", "version", "old"},
 	}
 
 	for _, tt := range cascading {
-		actual := tt.values.Cascade(tt.current, tt.name, tt.field)
-		if actual != tt.expected {
-			t.Errorf("expected %s, actual %s", tt.expected, actual)
-		}
+		actual := tt.values.Cascade(tt.current, tt.key, tt.field)
+		assert.NotEmpty(t, actual)
+		assert.Equal(t, tt.expected, actual)
 	}
 }

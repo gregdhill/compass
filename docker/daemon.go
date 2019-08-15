@@ -101,6 +101,17 @@ func serializeAuth(authConfig types.AuthConfig) (string, error) {
 	return base64.URLEncoding.EncodeToString(authToken), nil
 }
 
+func checkAndFixRef(ref string) (string, error) {
+	if imgParts := strings.Split(ref, "/"); len(imgParts) > 2 {
+		// server is identified
+		return ref, nil
+	} else if len(imgParts) == 2 {
+		// guessing it's a dockerhub reference
+		return fmt.Sprintf("%s/%s", DockerHub, ref), nil
+	}
+	return ref, fmt.Errorf("image ref '%s' not valid", ref)
+}
+
 func checkTag(ref string) error {
 	if imgTag := strings.Split(ref, ":"); len(imgTag) > 1 {
 		// already tagged

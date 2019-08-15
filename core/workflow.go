@@ -151,6 +151,10 @@ func RenderWith(k8s *kube.K8s) template.FuncMap {
 			data, err := ioutil.ReadFile(filename)
 			return string(data), err
 		},
+		"console": func(arg interface{}) error {
+			log.Println(arg)
+			return nil
+		},
 	}
 }
 

@@ -80,7 +80,7 @@ func GetHead(path string) (string, error) {
 }
 
 // Render reads a file and templates it according to the provided functions
-func Render(name string, values map[interface{}]interface{}, funcs template.FuncMap) ([]byte, error) {
+func Render(name string, v Values, funcs template.FuncMap) ([]byte, error) {
 	if name == "" {
 		return nil, nil
 	}
@@ -95,6 +95,7 @@ func Render(name string, values map[interface{}]interface{}, funcs template.Func
 	if err != nil {
 		return nil, err
 	}
-	err = t.Execute(buf, values)
+
+	err = t.Execute(buf, v)
 	return buf.Bytes(), err
 }

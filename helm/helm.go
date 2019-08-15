@@ -76,12 +76,12 @@ type Chart struct {
 // Lint validates the chart for required values
 // some of which are parsed from values
 func (c *Chart) Lint(key string, in *util.Values) error {
-	c.Version = in.Cascade(c.Version, key, "version")
-	if c.Namespace = in.Cascade(c.Namespace, key, "namespace"); c.Namespace == "" {
-		return fmt.Errorf("namespace for %s is empty", key)
-	}
+	c.Version = in.Cascade(c.Version, key, "chart_version")
 	if c.Release = in.Cascade(c.Release, key, "release"); c.Release == "" {
 		return fmt.Errorf("release for %s is empty", key)
+	}
+	if c.Namespace = in.Cascade(c.Namespace, key, "namespace"); c.Namespace == "" {
+		return fmt.Errorf("namespace for %s is empty", key)
 	}
 	if c.Name == "" {
 		return fmt.Errorf("chart name required in the format repo/app")

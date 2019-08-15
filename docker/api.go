@@ -9,6 +9,10 @@ import (
 	"github.com/genuinetools/reg/registry"
 )
 
+const (
+	DockerHub = "index.docker.io"
+)
+
 func getAuth(ref string) (types.AuthConfig, error) {
 	server := strings.Split(ref, "/")[0]
 	ac, err := config.LoadDefaultConfigFile(os.Stderr).GetAuthConfig(server)
@@ -44,7 +48,12 @@ func getDigest(ref string, conf types.AuthConfig) (string, error) {
 
 // GetImageDigest fetches the latest image digest for the given ref (server/app:tag)
 func GetImageDigest(ref string) (string, error) {
-	if err := checkTag(ref); err != nil {
+	var err error
+	if ref, err = checkAndFixRef(ref); err != nil {
+		return "", err
+	}
+
+	if err = checkTag(ref); err != nil {
 		return "", err
 	}
 
