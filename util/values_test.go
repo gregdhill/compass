@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"io/ioutil"
 	"os"
 	"testing"
@@ -80,6 +81,16 @@ func TestUnmarshal(t *testing.T) {
 	})
 }
 
+func TestMarshal(t *testing.T) {
+	values := new(Values)
+	err := yaml.Unmarshal([]byte(testValues1), values)
+	assert.NoError(t, err)
+
+	out, err := json.Marshal(values)
+	assert.NoError(t, err)
+	assert.Equal(t, `{"key":{"value":{"isit":true,"name":"this","nested":{"birds":{"sleep":"together"}},"what":[{"bar":"two","foo":"one"},{"bar":"four","foo":"three"}]}}}`, string(out))
+}
+
 func TestFromBytes(t *testing.T) {
 	vals := Values{}
 	err := vals.FromBytes([]byte("key: value"))
@@ -133,7 +144,7 @@ func TestCascade(t *testing.T) {
 		{Values{}, "new", "api", "version", "new"},
 
 		// prefer fully-qualified name
-		{map[interface{}]interface{}{"api": map[interface{}]string{"version": "old"}}, "", "api", "version", "old"},
+		{Values{"api": Values{"version": "old"}}, "", "api", "version", "old"},
 	}
 
 	for _, tt := range cascading {

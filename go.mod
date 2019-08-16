@@ -4,7 +4,7 @@ require (
 	cloud.google.com/go v0.35.1 // indirect
 	github.com/Azure/go-autorest v11.1.0+incompatible // indirect
 	github.com/Masterminds/semver v1.3.1 // indirect
-	github.com/Masterminds/sprig v2.16.0+incompatible // indirect
+	github.com/Masterminds/sprig v2.16.0+incompatible
 	github.com/aokoli/goutils v0.0.0-20140502001128-9c37978a95bd // indirect
 	github.com/cyphar/filepath-securejoin v0.2.2 // indirect
 	github.com/dgrijalva/jwt-go v3.2.0+incompatible // indirect

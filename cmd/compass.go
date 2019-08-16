@@ -36,6 +36,7 @@ var (
 	kubeConfig   string
 	helmConfig   string
 	shortVersion bool
+	toEnv        bool
 )
 
 var rootCmd = &cobra.Command{
@@ -69,11 +70,15 @@ var outputCmd = &cobra.Command{
 			return fmt.Errorf("no values supplied")
 		}
 
-		valOut, err := json.Marshal(outValues)
-		if err != nil {
-			return fmt.Errorf("couldn't marshal values: %v", err)
+		if toEnv {
+			outValues.ToEnv("")
+		} else {
+			valOut, err := json.Marshal(outValues)
+			if err != nil {
+				return fmt.Errorf("couldn't marshal values: %v", err)
+			}
+			fmt.Println(string(valOut))
 		}
-		fmt.Println(string(valOut))
 		return nil
 	},
 }
@@ -211,6 +216,7 @@ func init() {
 	kubeCmd.Flags().StringVarP(&namespace, "namespace", "n", "", "namespace to deploy")
 	rootCmd.AddCommand(kubeCmd)
 
+	outputCmd.Flags().BoolVarP(&toEnv, "to-env", "e", false, "output the finalized values into environment variables")
 	rootCmd.AddCommand(outputCmd)
 
 	versionCmd.Flags().BoolVar(&shortVersion, "short", false, "only output version")

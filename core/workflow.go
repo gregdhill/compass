@@ -7,12 +7,14 @@ import (
 	"sync"
 	"text/template"
 
+	"github.com/Masterminds/sprig"
 	"github.com/monax/compass/core/schema"
 	"github.com/monax/compass/docker"
 	"github.com/monax/compass/helm"
 	"github.com/monax/compass/kube"
 	"github.com/monax/compass/util"
 	log "github.com/sirupsen/logrus"
+	"github.com/valyala/fastjson"
 	"gopkg.in/yaml.v2"
 )
 
@@ -140,13 +142,22 @@ func Connect(wf *schema.Workflow, k8s *kube.K8s, tiller *helm.Tiller, input util
 
 // RenderWith returns the supported templating functions
 func RenderWith(k8s *kube.K8s) template.FuncMap {
-	return template.FuncMap{
+	compassfn := template.FuncMap{
 		"getDigest":     docker.GetImageDigest,
 		"getCommit":     util.GetHead,
 		"fromConfigMap": k8s.FromConfigMap,
 		"fromSecret":    k8s.FromSecret,
-		"parseJSON":     kube.ParseJSON,
 		"readEnv":       os.Getenv,
+		"parseJSON": func(item string, keys ...string) (string, error) {
+			if item == "" {
+				return "", fmt.Errorf("no JSON provided to parse")
+			}
+			result := fastjson.GetString([]byte(item), keys...)
+			if result == "" {
+				return "", fmt.Errorf("failed to find pattern (%v) in json", keys)
+			}
+			return result, nil
+		},
 		"readFile": func(filename string) (string, error) {
 			data, err := ioutil.ReadFile(filename)
 			return string(data), err
@@ -156,6 +167,12 @@ func RenderWith(k8s *kube.K8s) template.FuncMap {
 			return nil
 		},
 	}
+
+	sprigfn := sprig.TxtFuncMap()
+	for name, fn := range compassfn {
+		sprigfn[name] = fn
+	}
+	return sprigfn
 }
 
 // Backward deletes each stage in reverse order

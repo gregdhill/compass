@@ -10,7 +10,6 @@ import (
 	"strings"
 
 	log "github.com/sirupsen/logrus"
-	"github.com/valyala/fastjson"
 	v1core "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -167,6 +166,8 @@ func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err e
 	cm, err := k8s.typed.Core().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
 	if cm == nil {
 		return result, errors.New("failed to get configmap")
+	} else if err != nil {
+		return "", err
 	}
 	return cm.Data[key], nil
 }
@@ -176,6 +177,8 @@ func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err erro
 	sec, err := k8s.typed.Core().Secrets(namespace).Get(name, metav1.GetOptions{})
 	if sec == nil {
 		return result, errors.New("failed to get secret")
+	} else if err != nil {
+		return "", err
 	}
 	return string(sec.Data[key]), nil
 }
@@ -185,13 +188,4 @@ func (k8s *K8s) CreateNamespace(name string) error {
 	ns := &v1core.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
 	_, err := k8s.typed.Core().Namespaces().Create(ns)
 	return err
-}
-
-// ParseJSON dynamically parses a json string
-func ParseJSON(item string, keys ...string) (result string, err error) {
-	result = fastjson.GetString([]byte(item), keys...)
-	if result == "" {
-		err = errors.New("failed to find pattern in json")
-	}
-	return
 }

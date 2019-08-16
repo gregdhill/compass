@@ -17,7 +17,7 @@ func TestLinter(t *testing.T) {
 	wf.Stages = charts
 
 	chart.Resource.(*helm.Chart).Namespace = ""
-	Lint(wf, util.Values{"test.namespace": "somewhere-else"})
+	Lint(wf, util.Values{"namespace": "somewhere-else"})
 	assert.Equal(t, "somewhere-else", wf.Stages["test"].Resource.(*helm.Chart).Namespace)
 }
 

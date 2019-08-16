@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"text/template"
@@ -10,6 +11,15 @@ import (
 
 // Values represents mappings for go variables
 type Values map[interface{}]interface{}
+
+func (v Values) MarshalJSON() ([]byte, error) {
+	out := make(map[string]interface{}, len(v))
+	for key, value := range v {
+		out[fmt.Sprintf("%v", key)] = value
+	}
+
+	return json.Marshal(out)
+}
 
 func NewValues(from map[string]string) Values {
 	values := make(Values)
@@ -104,8 +114,6 @@ func (v Values) Cascade(current, key, field string) string {
 	switch vv := v[key].(type) {
 	case map[string]string:
 		return vv[field]
-	case map[interface{}]string:
-		return vv[field]
 	case Values:
 		if r, ok := vv[field].(string); ok {
 			return r
@@ -124,5 +132,24 @@ func (v Values) Cascade(current, key, field string) string {
 func Combine(one, two map[string]string) {
 	for key, value := range two {
 		one[key] = value
+	}
+}
+
+func (v Values) ToEnv(prefix string) {
+	for key, value := range v {
+		switch vv := value.(type) {
+		case Values:
+			if prefix == "" {
+				vv.ToEnv(fmt.Sprintf("%v", key))
+			} else {
+				vv.ToEnv(fmt.Sprintf("%s_%v", prefix, key))
+			}
+		default:
+			if prefix == "" {
+				fmt.Printf("%v=%v\n", key, value)
+			} else {
+				fmt.Printf("%v_%v=%v\n", prefix, key, value)
+			}
+		}
 	}
 }
