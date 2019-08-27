@@ -94,16 +94,6 @@ var runCmd = &cobra.Command{
 		ctx := context.Background()
 		workflow := schema.NewWorkflow()
 
-		// populate workflow with stages
-		var data []byte
-		if data, err = util.Render(spec, outValues, core.RenderWith(k8s)); err != nil {
-			return err
-		}
-		if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
-			return err
-		}
-		workflow.Values.Append(outValues)
-
 		// do builds and fetch tags
 		util.Combine(workflow.Build, builds)
 		util.Combine(workflow.Tag, tags)
@@ -124,6 +114,16 @@ var runCmd = &cobra.Command{
 		// we want those digests before we
 		// template the main workflow
 		workflow.Values.AppendStr(shas)
+
+		// populate workflow with stages
+		workflow.Values.Append(outValues)
+		var data []byte
+		if data, err = util.Render(spec, workflow.Values, core.RenderWith(k8s)); err != nil {
+			return err
+		}
+		if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
+			return err
+		}
 
 		tiller, err := helm.NewClient(k8s, helmConfig, tillerName, tillerPort)
 		if err != nil {
