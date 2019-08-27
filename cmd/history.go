@@ -11,6 +11,12 @@ var commit string
 
 var History relic.ImmutableHistory = relic.NewHistory("Compass", "https://github.com/monax/compass").
 	MustDeclareReleases("", ``,
+		"0.5.1 - 2019-08-27",
+		`
+		### Fixed
+		- Ordering of build, tag, and deploy so that sha's properly populate
+		`,
+
 		"0.5.0 - 2019-08-16",
 		`
 		### Added
