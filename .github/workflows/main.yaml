@@ -1,0 +1,16 @@
+name: main
+on: [push]
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/setup-go@v1
+      with:
+        go-version: 1.12
+      id: go
+    - uses: actions/checkout@v1
+    - name: Get Helm
+      run: curl -L https://git.io/get_helm.sh | bash
+    - run: helm init --client-only
+    - run: make test

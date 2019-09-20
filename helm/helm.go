@@ -117,8 +117,11 @@ func (c *Chart) Download() (*chart.Chart, error) {
 		Getters:  getter.All(c.envset),
 	}
 	if _, err := os.Stat(c.envset.Home.Archive()); os.IsNotExist(err) {
-		fmt.Printf("Creating directory: %s\n", c.envset.Home.Archive())
-		os.MkdirAll(c.envset.Home.Archive(), 0744)
+		c.logger.Infof("Creating directory: %s\n", c.envset.Home.Archive())
+		err := os.MkdirAll(c.envset.Home.Archive(), 0744)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	chart, _, err := dl.DownloadTo(c.Name, c.Version, c.envset.Home.Archive())

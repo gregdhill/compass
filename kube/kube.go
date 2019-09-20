@@ -74,7 +74,7 @@ func NewFakeClient() *K8s {
 
 // FindPod finds a pod based on the namespace and the given label
 func (k8s *K8s) FindPod(namespace, label string) (result string, err error) {
-	pods, err := k8s.typed.Core().Pods(namespace).List(metav1.ListOptions{LabelSelector: label})
+	pods, err := k8s.typed.CoreV1().Pods(namespace).List(metav1.ListOptions{LabelSelector: label})
 	if len(pods.Items) < 1 {
 		return result, errors.New("no pods found")
 	}
@@ -121,7 +121,7 @@ func (k8s *K8s) ForwardPod(name, namespace, local, remote string) chan struct{} 
 }
 
 func (k8s *K8s) getPodLogs(namespace, name string) (string, error) {
-	req := k8s.typed.Core().Pods(namespace).GetLogs(name, &v1core.PodLogOptions{})
+	req := k8s.typed.CoreV1().Pods(namespace).GetLogs(name, &v1core.PodLogOptions{})
 	readCloser, err := req.Stream()
 	if err != nil {
 		return "", err
@@ -133,7 +133,7 @@ func (k8s *K8s) getPodLogs(namespace, name string) (string, error) {
 
 func (k8s *K8s) waitPod(namespace, pod string, remove bool, timeout int64) error {
 	// make a watcher to wait for this pod to be ready
-	watch, err := k8s.typed.Core().Pods(namespace).Watch(metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", pod), TimeoutSeconds: &timeout})
+	watch, err := k8s.typed.CoreV1().Pods(namespace).Watch(metav1.ListOptions{FieldSelector: fmt.Sprintf("metadata.name=%s", pod), TimeoutSeconds: &timeout})
 	if err != nil {
 		return err
 	}
@@ -163,7 +163,7 @@ func (k8s *K8s) getLogsAndDelete(namespace, pod string) error {
 
 // FromConfigMap reads an entry from a ConfigMap
 func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err error) {
-	cm, err := k8s.typed.Core().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
+	cm, err := k8s.typed.CoreV1().ConfigMaps(namespace).Get(name, metav1.GetOptions{})
 	if cm == nil {
 		return result, errors.New("failed to get configmap")
 	} else if err != nil {
@@ -174,7 +174,7 @@ func (k8s *K8s) FromConfigMap(name, namespace, key string) (result string, err e
 
 // FromSecret reads an entry from a Secret
 func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err error) {
-	sec, err := k8s.typed.Core().Secrets(namespace).Get(name, metav1.GetOptions{})
+	sec, err := k8s.typed.CoreV1().Secrets(namespace).Get(name, metav1.GetOptions{})
 	if sec == nil {
 		return result, errors.New("failed to get secret")
 	} else if err != nil {
@@ -186,6 +186,6 @@ func (k8s *K8s) FromSecret(name, namespace, key string) (result string, err erro
 // CreateNamespace tells the k8s api to make a namespace
 func (k8s *K8s) CreateNamespace(name string) error {
 	ns := &v1core.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}
-	_, err := k8s.typed.Core().Namespaces().Create(ns)
+	_, err := k8s.typed.CoreV1().Namespaces().Create(ns)
 	return err
 }
