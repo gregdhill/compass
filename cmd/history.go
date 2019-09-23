@@ -11,6 +11,13 @@ var commit string
 
 var History relic.ImmutableHistory = relic.NewHistory("Compass", "https://github.com/monax/compass").
 	MustDeclareReleases("", ``,
+		"0.5.2 - 2019-09-23",
+		`
+		### Changed
+		- Builds are now specified in the config
+		- Tar packages build with target as tld
+		`,
+
 		"0.5.1 - 2019-08-27",
 		`
 		### Fixed

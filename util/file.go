@@ -5,8 +5,10 @@ import (
 	"bytes"
 	"io/ioutil"
 	"os"
+	"path"
 	"path/filepath"
 	"regexp"
+	"strings"
 	"text/template"
 
 	"gopkg.in/src-d/go-git.v4"
@@ -31,9 +33,10 @@ func PackageDir(dir string, ignore []string) ([]byte, error) {
 	tw := tar.NewWriter(&buf)
 	defer tw.Close()
 
-	if err := filepath.Walk(dir, func(dir string, file os.FileInfo, err error) error {
+	if err := filepath.Walk(dir, func(url string, file os.FileInfo, err error) error {
 		hdr := &tar.Header{
-			Name: dir,
+			// we want the given dir to be the top level
+			Name: strings.TrimLeft(url, path.Base(dir)),
 			Mode: 0600,
 			Size: file.Size(),
 		}
@@ -43,7 +46,7 @@ func PackageDir(dir string, ignore []string) ([]byte, error) {
 
 		// .dockerignore
 		for _, i := range ignore {
-			if match, _ := regexp.MatchString(i, dir); match {
+			if match, _ := regexp.MatchString(i, url); match {
 				return nil
 			}
 		}
@@ -52,7 +55,7 @@ func PackageDir(dir string, ignore []string) ([]byte, error) {
 			return err
 		}
 
-		contents, err := ioutil.ReadFile(dir)
+		contents, err := ioutil.ReadFile(url)
 		if _, err := tw.Write(contents); err != nil {
 			return err
 		}
@@ -79,8 +82,8 @@ func GetHead(path string) (string, error) {
 	return ref.Hash().String(), nil
 }
 
-// Render reads a file and templates it according to the provided functions
-func Render(name string, v Values, funcs template.FuncMap) ([]byte, error) {
+// RenderFile reads a file and templates it according to the provided functions
+func RenderFile(name string, v Values, funcs template.FuncMap) ([]byte, error) {
 	if name == "" {
 		return nil, nil
 	}
@@ -90,6 +93,10 @@ func Render(name string, v Values, funcs template.FuncMap) ([]byte, error) {
 		return nil, err
 	}
 
+	return Render(name, data, v, funcs)
+}
+
+func Render(name string, data []byte, v Values, funcs template.FuncMap) ([]byte, error) {
 	buf := new(bytes.Buffer)
 	t, err := template.New(name).Funcs(funcs).Parse(string(data))
 	if err != nil {

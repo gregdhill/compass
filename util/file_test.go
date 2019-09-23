@@ -62,7 +62,7 @@ func TestGetHead(t *testing.T) {
 }
 
 func TestRender(t *testing.T) {
-	data, err := Render("", nil, template.FuncMap{})
+	data, err := RenderFile("", nil, template.FuncMap{})
 	assert.NoError(t, err)
 	assert.Nil(t, data)
 
@@ -73,7 +73,7 @@ func TestRender(t *testing.T) {
 	assert.NoError(t, f.Close())
 	defer os.Remove(f.Name())
 
-	data, err = Render(f.Name(), Values{"key": "value"},
+	data, err = RenderFile(f.Name(), Values{"key": "value"},
 		template.FuncMap{"getMe": func() string {
 			return "value"
 		}})

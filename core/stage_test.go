@@ -13,8 +13,10 @@ import (
 
 func newTestChart() *schema.Stage {
 	stg := &schema.Stage{
-		Forget: false,
-		Kind:   "helm",
+		Actions: schema.Actions{
+			Forget: false,
+			Kind:   "helm",
+		},
 		Resource: &helm.Chart{
 			Name:      "stable/burrow",
 			Namespace: "test-namespace",
@@ -39,8 +41,10 @@ type: Opaque
 func newTestManifest() *schema.Stage {
 	k8s := kube.NewFakeClient()
 	stg := schema.Stage{
-		Forget: false,
-		Kind:   "kube",
+		Actions: schema.Actions{
+			Forget: false,
+			Kind:   "kube",
+		},
 		Resource: &kube.Manifest{
 			Namespace: "test-namespace",
 			Object:    []byte(testConf),

@@ -88,7 +88,7 @@ func (v Values) FromFile(fileName string) error {
 
 // FromTemplate reads more key:value mappings from a templated file
 func (v Values) FromTemplate(fileName string, funcs template.FuncMap) error {
-	data, err := Render(fileName, v, funcs)
+	data, err := RenderFile(fileName, v, funcs)
 	if err != nil {
 		return err
 	}

@@ -68,7 +68,7 @@ func buildImage(ctx context.Context, cli client.ImageAPIClient, buildCtx, ref st
 		ctx,
 		bytes.NewReader(tarArch),
 		types.ImageBuildOptions{
-			Dockerfile: path.Join(buildCtx, "Dockerfile"),
+			Dockerfile: "Dockerfile",
 			Tags:       []string{ref},
 		})
 	if err != nil {
@@ -124,7 +124,7 @@ func tagRef(ref, buildCtx string) (string, error) {
 	if err := checkTag(ref); err == nil {
 		return ref, nil
 	}
-	commit, err := util.GetHead(buildCtx)
+	commit, err := util.GetHead(".")
 	if err != nil {
 		return "", err
 	}

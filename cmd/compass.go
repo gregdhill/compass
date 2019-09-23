@@ -16,7 +16,7 @@ import (
 	"github.com/monax/compass/util"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/cobra"
-	yaml "gopkg.in/yaml.v2"
+	yaml "gopkg.in/yaml.v3"
 )
 
 var (
@@ -24,11 +24,8 @@ var (
 	templates    []string
 	inValues     map[string]string
 	outValues    util.Values
-	builds       map[string]string
-	tags         map[string]string
 	destroy      bool
 	force        bool
-	buildCtx     string
 	tillerName   string
 	tillerPort   string
 	until        string
@@ -94,36 +91,32 @@ var runCmd = &cobra.Command{
 		ctx := context.Background()
 		workflow := schema.NewWorkflow()
 
-		// do builds and fetch tags
-		util.Combine(workflow.Build, builds)
-		util.Combine(workflow.Tag, tags)
-		shas := make(map[string]string, len(builds)+len(tags))
-		for k, v := range workflow.Build {
-			shas[k], err = docker.BuildAndPush(ctx, buildCtx, v)
-			if err != nil {
-				return err
-			}
-		}
-		for k, v := range workflow.Tag {
-			shas[k], err = docker.GetImageDigest(v)
-			if err != nil {
-				return err
-			}
-		}
-
-		// we want those digests before we
-		// template the main workflow
-		workflow.Values.AppendStr(shas)
-
-		// populate workflow with stages
-		workflow.Values.Append(outValues)
 		var data []byte
-		if data, err = util.Render(spec, workflow.Values, core.RenderWith(k8s)); err != nil {
+		if data, err = util.RenderFile(spec, outValues, core.RenderWith(k8s)); err != nil {
 			return err
 		}
 		if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
 			return err
 		}
+
+		// do builds and fetch tags
+		shas := make(map[string]string, len(workflow.Build)+len(workflow.Tag))
+		for _, img := range workflow.Build {
+			shas[img.Name], err = docker.BuildAndPush(ctx, img.Context, img.Reference)
+			if err != nil {
+				return err
+			}
+		}
+		for _, img := range workflow.Tag {
+			shas[img.Name], err = docker.GetImageDigest(img.Reference)
+			if err != nil {
+				return err
+			}
+		}
+
+		// we want those shas before we
+		// template the main workflow
+		workflow.Values.AppendStr(shas)
 
 		tiller, err := helm.NewClient(k8s, helmConfig, tillerName, tillerPort)
 		if err != nil {
@@ -135,13 +128,6 @@ var runCmd = &cobra.Command{
 			return err
 		}
 
-		c := make(chan os.Signal)
-		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-		go func() {
-			<-c
-			os.Exit(1)
-		}()
-
 		if err = core.Lint(workflow, workflow.Values); err != nil {
 			return err
 		}
@@ -150,6 +136,13 @@ var runCmd = &cobra.Command{
 		if len(workflow.Stages) == 0 {
 			return fmt.Errorf("nothing to run")
 		}
+
+		c := make(chan os.Signal)
+		signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+		go func() {
+			<-c
+			os.Exit(1)
+		}()
 
 		// reverse workflow
 		if destroy {
@@ -176,7 +169,7 @@ var kubeCmd = &cobra.Command{
 	Args:    cobra.ExactArgs(1),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		spec := args[0]
-		out, err := util.Render(spec, outValues, core.RenderWith(k8s))
+		out, err := util.RenderFile(spec, outValues, core.RenderWith(k8s))
 		if err != nil {
 			return err
 		}
@@ -198,13 +191,10 @@ var kubeCmd = &cobra.Command{
 }
 
 func init() {
-	rootCmd.PersistentFlags().StringToStringVar(&builds, "build", nil, "build specified image in context")
 	rootCmd.PersistentFlags().StringVar(&kubeConfig, "kube-config", "", "kubernetes config")
-	rootCmd.PersistentFlags().StringToStringVar(&tags, "tag", nil, "get digest of image")
 	rootCmd.PersistentFlags().StringArrayVarP(&templates, "template", "t", nil, "file with key:value mappings")
 	rootCmd.PersistentFlags().StringToStringVar(&inValues, "value", nil, "explicit key=value pairs")
 
-	runCmd.Flags().StringVarP(&buildCtx, "context", "c", ".", "context for building and packaging")
 	runCmd.Flags().BoolVarP(&destroy, "destroy", "d", false, "purge all stages, top-down")
 	runCmd.Flags().BoolVarP(&force, "force", "f", false, "force install / upgrade / delete")
 	runCmd.Flags().StringVar(&helmConfig, "helm-config", "", "helm config")

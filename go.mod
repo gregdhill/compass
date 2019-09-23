@@ -2,7 +2,6 @@ module github.com/monax/compass
 
 require (
 	cloud.google.com/go v0.46.3 // indirect
-	github.com/Azure/go-autorest v12.2.0+incompatible
 	github.com/Azure/go-autorest/autorest v0.9.1 // indirect
 	github.com/Azure/go-autorest/autorest/adal v0.6.0 // indirect
 	github.com/Masterminds/goutils v1.1.0 // indirect
@@ -27,7 +26,6 @@ require (
 	github.com/huandu/xstrings v1.2.0 // indirect
 	github.com/imdario/mergo v0.3.7 // indirect
 	github.com/konsorten/go-windows-terminal-sequences v1.0.2 // indirect
-	github.com/mitchellh/mapstructure v1.1.2
 	github.com/moby/moby v1.13.1
 	github.com/monax/relic v2.0.0+incompatible
 	github.com/pkg/errors v0.8.1
@@ -45,6 +43,7 @@ require (
 	gopkg.in/inf.v0 v0.9.1 // indirect
 	gopkg.in/src-d/go-git.v4 v4.13.1
 	gopkg.in/yaml.v2 v2.2.2
+	gopkg.in/yaml.v3 v3.0.0-20190905181640-827449938966
 	k8s.io/api v0.0.0-20190920115539-4f7a4f90b2c0
 	k8s.io/apimachinery v0.0.0-20190919161714-83fef8059749
 	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab

@@ -15,7 +15,6 @@ import (
 	"github.com/monax/compass/util"
 	log "github.com/sirupsen/logrus"
 	"github.com/valyala/fastjson"
-	"gopkg.in/yaml.v2"
 )
 
 type Node struct {
@@ -113,7 +112,7 @@ func Lint(wf *schema.Workflow, in util.Values) (err error) {
 }
 
 // Connect links all of our stages to their required resources and pre-renders their input
-func Connect(wf *schema.Workflow, k8s *kube.K8s, tiller *helm.Tiller, input util.Values) error {
+func Connect(wf *schema.Workflow, k8s *kube.K8s, tiller *helm.Tiller, v util.Values) error {
 	for _, stg := range wf.Stages {
 		switch stg.Kind {
 		case "kube", "kubernetes":
@@ -122,18 +121,10 @@ func Connect(wf *schema.Workflow, k8s *kube.K8s, tiller *helm.Tiller, input util
 			stg.Connect(tiller)
 		}
 
-		out, err := util.Render(stg.Template, input, RenderWith(k8s))
+		out, err := util.RenderFile(stg.Template, v, RenderWith(k8s))
 		if err != nil {
 			return err
 		}
-		if stg.Values != nil {
-			vals, err := yaml.Marshal(stg.Values)
-			if err != nil {
-				return err
-			}
-			out = append(out, vals...)
-		}
-
 		stg.SetInput(out)
 	}
 
