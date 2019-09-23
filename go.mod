@@ -34,10 +34,10 @@ require (
 	github.com/spf13/pflag v1.0.5 // indirect
 	github.com/stretchr/testify v1.3.0
 	github.com/valyala/fastjson v1.4.1
-	golang.org/x/crypto v0.0.0-20190911031432-227b76d455e7 // indirect
-	golang.org/x/net v0.0.0-20190918130420-a8b05e9114ab // indirect
-	golang.org/x/sys v0.0.0-20190919044723-0c1ff786ef13 // indirect
-	google.golang.org/appengine v1.6.2 // indirect
+	golang.org/x/crypto v0.0.0-20190923035154-9ee001bba392 // indirect
+	golang.org/x/net v0.0.0-20190921015927-1a5e07d1ff72 // indirect
+	golang.org/x/time v0.0.0-20190921001708-c4c64cad1fd0 // indirect
+	google.golang.org/appengine v1.6.3 // indirect
 	google.golang.org/genproto v0.0.0-20190916214212-f660b8655731 // indirect
 	google.golang.org/grpc v1.23.1 // indirect
 	gopkg.in/inf.v0 v0.9.1 // indirect
@@ -46,11 +46,11 @@ require (
 	gopkg.in/yaml.v3 v3.0.0-20190905181640-827449938966
 	k8s.io/api v0.0.0-20190920115539-4f7a4f90b2c0
 	k8s.io/apimachinery v0.0.0-20190919161714-83fef8059749
-	k8s.io/client-go v0.0.0-20190620085101-78d2af792bab
+	k8s.io/client-go v0.0.0-20190918160344-1fbdaa4c8d90
 	k8s.io/helm v2.14.3+incompatible
 	k8s.io/klog v1.0.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20190918143330-0270cf2f1c1d // indirect
-	k8s.io/utils v0.0.0-20190920012459-5008bf6f8cd6 // indirect
+	k8s.io/utils v0.0.0-20190923111123-69764acb6e8e // indirect
 )
 
 go 1.13
