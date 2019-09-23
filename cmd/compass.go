@@ -102,7 +102,7 @@ var runCmd = &cobra.Command{
 		// do builds and fetch tags
 		shas := make(map[string]string, len(workflow.Build)+len(workflow.Tag))
 		for _, img := range workflow.Build {
-			shas[img.Name], err = docker.BuildAndPush(ctx, img.Context, img.Reference)
+			shas[img.Name], err = docker.BuildAndPush(ctx, img)
 			if err != nil {
 				return err
 			}

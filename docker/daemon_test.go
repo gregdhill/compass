@@ -10,6 +10,7 @@ import (
 	"github.com/docker/docker/api/types"
 	"github.com/docker/docker/api/types/filters"
 	"github.com/docker/docker/api/types/registry"
+	"github.com/monax/compass/core/schema"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
 )
@@ -26,14 +27,12 @@ func TestTagging(t *testing.T) {
 	err = checkTag(testRefNoTag)
 	assert.Error(t, err)
 
-	actual, err := tagRef(testRefWithTag, ".")
+	actual, err := tagRef(testRefWithTag)
 	assert.NoError(t, err)
 	assert.Equal(t, testRefWithTag, actual)
 
-	actual, err = tagRef(testRefNoTag, ".")
+	actual, err = tagRef(testRefNoTag)
 	assert.Error(t, err)
-	actual, err = tagRef(testRefNoTag, "../")
-	assert.NoError(t, err)
 }
 
 type imgCli struct {
@@ -90,7 +89,11 @@ func (ic imgCli) ImagesPrune(ctx context.Context, pruneFilter filters.Args) (typ
 
 func TestBuildPush(t *testing.T) {
 	cli := imgCli{}
-	err := buildImage(context.TODO(), cli, "../", testRefWithTag)
+	img := schema.Image{
+		Context:   "../",
+		Reference: testRefWithTag,
+	}
+	err := buildImage(context.TODO(), cli, img)
 	assert.NoError(t, err)
 
 	err = pushImage(context.TODO(), cli, "", testRefWithTag)

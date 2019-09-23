@@ -9,9 +9,10 @@ import (
 )
 
 type Image struct {
-	Name      string `yaml:"name"`
-	Context   string `yaml:"context"`
-	Reference string `yaml:"reference"`
+	Name      string             `yaml:"name"`
+	Context   string             `yaml:"context"`
+	Reference string             `yaml:"reference"`
+	Args      map[string]*string `yaml:"args"`
 }
 
 // Workflow represents the complete pipeline

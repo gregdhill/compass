@@ -14,6 +14,7 @@ import (
 
 	"github.com/docker/docker/api/types"
 	"github.com/moby/moby/client"
+	"github.com/monax/compass/core/schema"
 	"github.com/monax/compass/util"
 	"github.com/pkg/errors"
 	log "github.com/sirupsen/logrus"
@@ -51,28 +52,31 @@ func readIgnore(path string) ([]string, error) {
 	return out, scanner.Err()
 }
 
-func buildImage(ctx context.Context, cli client.ImageAPIClient, buildCtx, ref string) error {
-	log.Infof("Packaging from: %s", buildCtx)
-	ignore, err := readIgnore(path.Join(buildCtx, ".dockerignore"))
+func buildImage(ctx context.Context, cli client.ImageAPIClient, img schema.Image) error {
+	log.Infof("Packaging from: %s", img.Context)
+	ignore, err := readIgnore(path.Join(img.Context, ".dockerignore"))
 	if err != nil {
 		return err
 	}
 
-	tarArch, err := util.PackageDir(buildCtx, ignore)
+	tarArch, err := util.PackageDir(img.Context, ignore)
 	if err != nil {
 		return err
 	}
+
+	fmt.Println(img.Args)
 
 	log.Info("Sending context to daemon...")
 	imageBuildResponse, err := cli.ImageBuild(
 		ctx,
 		bytes.NewReader(tarArch),
 		types.ImageBuildOptions{
+			BuildArgs:  img.Args,
 			Dockerfile: "Dockerfile",
-			Tags:       []string{ref},
+			Tags:       []string{img.Reference},
 		})
 	if err != nil {
-		return errors.Wrap(err, fmt.Sprintf("cannot build docker image with ref %s", ref))
+		return errors.Wrap(err, fmt.Sprintf("cannot build docker image with ref %s", img.Reference))
 	}
 	defer imageBuildResponse.Body.Close()
 
@@ -120,7 +124,7 @@ func checkTag(ref string) error {
 	return errors.New("no image tag supplied")
 }
 
-func tagRef(ref, buildCtx string) (string, error) {
+func tagRef(ref string) (string, error) {
 	if err := checkTag(ref); err == nil {
 		return ref, nil
 	}
@@ -133,21 +137,21 @@ func tagRef(ref, buildCtx string) (string, error) {
 }
 
 // BuildAndPush constructs a local image and commits it to the remote repository
-func BuildAndPush(ctx context.Context, buildCtx, ref string) (string, error) {
+func BuildAndPush(ctx context.Context, img schema.Image) (string, error) {
 	cli, err := client.NewEnvClient()
 	if err != nil {
 		return "", err
 	}
 
-	if ref, err = tagRef(ref, buildCtx); err != nil {
+	if img.Reference, err = tagRef(img.Reference); err != nil {
 		return "", err
 	}
 
-	if err := buildImage(ctx, cli, buildCtx, ref); err != nil {
+	if err := buildImage(ctx, cli, img); err != nil {
 		return "", err
 	}
 
-	authConfig, err := getAuth(ref)
+	authConfig, err := getAuth(img.Reference)
 	if err != nil {
 		return "", err
 	}
@@ -157,9 +161,9 @@ func BuildAndPush(ctx context.Context, buildCtx, ref string) (string, error) {
 		return "", err
 	}
 
-	if err := pushImage(ctx, cli, authToken, ref); err != nil {
+	if err := pushImage(ctx, cli, authToken, img.Reference); err != nil {
 		return "", err
 	}
 
-	return getDigest(ref, authConfig)
+	return getDigest(img.Reference, authConfig)
 }
