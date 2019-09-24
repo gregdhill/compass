@@ -98,6 +98,7 @@ var runCmd = &cobra.Command{
 		if err = yaml.Unmarshal([]byte(data), &workflow); err != nil {
 			return err
 		}
+		workflow.Values.Append(outValues)
 
 		// do builds and fetch tags
 		shas := make(map[string]string, len(workflow.Build)+len(workflow.Tag))
