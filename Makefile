@@ -12,4 +12,3 @@ release: install
 	$(eval COMPASS_VERSION := $(shell compass version --short))
 	git tag ${COMPASS_VERSION}
 	git push origin ${COMPASS_VERSION}
-	goreleaser --rm-dist
