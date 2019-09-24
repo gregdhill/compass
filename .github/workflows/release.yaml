@@ -13,7 +13,7 @@ jobs:
     - name: Publish
       uses: docker://goreleaser/goreleaser
       env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN }}
       with:
         args: release
       if: success()
